@@ -160,7 +160,7 @@ function App() {
   };
 
   const checkout = async () => {
-    console.log('Checkout function called!', { cartItems: cartItems.length, loading });
+    console.log('Checkout function called!', { cartItems: cartItems.length, loading, currentTab: activeTab });
     
     if (cartItems.length === 0) {
       addNotification('Your cart is empty!', 'warning');
@@ -210,12 +210,17 @@ function App() {
         addNotification('Orders placed successfully!', 'success');
       }
       
+      console.log('Order successful, updating UI...');
       setCartItems([]);
       setShowCheckout(false);
+      console.log('Loading updated data...');
       await loadData(); // Refresh orders
+      console.log('Setting active tab to orders...');
       setActiveTab('orders');
+      console.log('Checkout process complete!');
     } catch (err) {
-      addNotification('Failed to place order. Please try again.', 'error');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      addNotification(`Failed to place order: ${errorMessage}`, 'error');
       console.error('Checkout error:', err);
     } finally {
       setLoading(false);

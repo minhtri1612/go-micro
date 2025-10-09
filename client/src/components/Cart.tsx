@@ -158,8 +158,20 @@ const Cart = ({
               <button
                 onClick={() => {
                   console.log('Confirm Order clicked!', { loading, onConfirmCheckout: !!onConfirmCheckout });
+                  // Add detailed state logging
+                  const cartState = {
+                    itemCount: items.length,
+                    total: total,
+                    loading: loading,
+                    showCheckout: showCheckout,
+                  };
+                  console.log('Current cart state:', cartState);
+                  
                   if (onConfirmCheckout) {
+                    console.log('Executing checkout...');
                     onConfirmCheckout();
+                  } else {
+                    console.error('No checkout handler provided!');
                   }
                 }}
                 disabled={loading}
