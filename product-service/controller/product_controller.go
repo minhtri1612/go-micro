@@ -44,7 +44,7 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 
 // GetProducts returns all products
 func (pc *ProductController) GetProducts(c *gin.Context) {
-	rows, err := pc.DB.Query("SELECT id, name, description, price FROM products")
+	rows, err := pc.DB.Query("SELECT id, name, description, price, category, image_url, stock_quantity, created_at, updated_at FROM products")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -54,7 +54,7 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	var products []model.Product
 	for rows.Next() {
 		var p model.Product
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Price); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.Category, &p.ImageURL, &p.StockQuantity, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -69,8 +69,8 @@ func (pc *ProductController) GetProduct(c *gin.Context) {
 	id := c.Param("id")
 	var product model.Product
 
-	err := pc.DB.QueryRow("SELECT id, name, description, price FROM products WHERE id = $1", id).
-		Scan(&product.ID, &product.Name, &product.Description, &product.Price)
+	err := pc.DB.QueryRow("SELECT id, name, description, price, category, image_url, stock_quantity, created_at, updated_at FROM products WHERE id = $1", id).
+		Scan(&product.ID, &product.Name, &product.Description, &product.Price, &product.Category, &product.ImageURL, &product.StockQuantity, &product.CreatedAt, &product.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})

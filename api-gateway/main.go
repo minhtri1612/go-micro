@@ -71,18 +71,23 @@ func main() {
 
 	// Handle requests to specific microservices
 	// Products
+	apiV1.Any("/products", createReverseProxy(productServiceURL, "/products"))
 	apiV1.Any("/products/*path", createReverseProxy(productServiceURL, "/products"))
 
 	// Orders
+	apiV1.Any("/orders", createReverseProxy(orderServiceURL, "/orders"))
 	apiV1.Any("/orders/*path", createReverseProxy(orderServiceURL, "/orders"))
 
 	// Inventory
+	apiV1.Any("/inventory", createReverseProxy(inventoryServiceURL, "/inventory"))
 	apiV1.Any("/inventory/*path", createReverseProxy(inventoryServiceURL, "/inventory"))
 
 	// Notifications
+	apiV1.Any("/notifications", createReverseProxy(notificationServiceURL, "/notifications"))
 	apiV1.Any("/notifications/*path", createReverseProxy(notificationServiceURL, "/notifications"))
 
 	// Payments
+	apiV1.Any("/payments", createReverseProxy(paymentServiceURL, "/payments"))
 	apiV1.Any("/payments/*path", createReverseProxy(paymentServiceURL, "/payments"))
 
 	// API Documentation endpoint
@@ -170,10 +175,14 @@ func createReverseProxy(serviceURL, stripPrefix string) gin.HandlerFunc {
 
 		// Remove the prefix from the path (e.g., /api/v1/products -> /products)
 		path := c.Param("path")
-		if path == "/" {
-			path = ""
+		if path == "" || path == "/" {
+			c.Request.URL.Path = stripPrefix
+		} else {
+			if path[0] == '/' {
+				path = path[1:] // Remove leading slash
+			}
+			c.Request.URL.Path = stripPrefix + "/" + path
 		}
-		c.Request.URL.Path = stripPrefix + path
 
 		log.Printf("Proxying request: %s %s -> %s\n", c.Request.Method, c.Request.URL.String(), serviceURL+path)
 
