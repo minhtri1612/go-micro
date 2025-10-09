@@ -1,0 +1,255 @@
+services:
+  # Client Frontend
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "3011:80"
+    environment:
+      - VITE_API_URL=http://localhost:8089
+    depends_on:
+      - api-gateway
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
+    ports:
+      - "8089:8000"
+    environment:
+      - PRODUCT_SERVICE_URL=http://product-service:8080
+      - ORDER_SERVICE_URL=http://order-service:8081
+      - INVENTORY_SERVICE_URL=http://inventory-service:8082
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8083
+      - PAYMENT_SERVICE_URL=http://payment-service:8084
+    depends_on:
+      - product-service
+      - order-service
+      - inventory-service
+      - notification-service
+      - payment-service
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - microservices-network
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5673:5672"   # AMQP protocol port
+      - "15673:15672" # Management UI port
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - microservices-network
+
+  # Product Service
+  product-service:
+    build:
+      context: .
+      dockerfile: ./product-service/Dockerfile
+    ports:
+      - "8088:8080"
+    environment:
+      - DB_HOST=product-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=products_db
+    depends_on:
+      - product-db
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Order Service
+  order-service:
+    build:
+      context: .
+      dockerfile: ./order-service/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_HOST=order-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=orders_db
+      - INVENTORY_SERVICE_URL=http://inventory-service:8082
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8083
+    depends_on:
+      - order-db
+      - inventory-service
+      - notification-service
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Inventory Service
+  inventory-service:
+    build:
+      context: .
+      dockerfile: ./inventory-service/Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      - DB_HOST=inventory-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=inventory_db
+    depends_on:
+      - inventory-db
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Notification Service
+  notification-service:
+    build:
+      context: .
+      dockerfile: ./notification-service/Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      - DB_HOST=notification-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=notification_db
+    depends_on:
+      - notification-db
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Payment Service
+  payment-service:
+    build:
+      context: .
+      dockerfile: ./payment-service/Dockerfile
+    ports:
+      - "8084:8084"
+    environment:
+      - DB_HOST=payment-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=payment_db
+      - STRIPE_SECRET_KEY=sk_test_dummy_key_for_development
+    depends_on:
+      - payment-db
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Product Database
+  product-db:
+    image: postgres:14-alpine
+    ports:
+      - "5447:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=products_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/product-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - product-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  # Order Database
+  order-db:
+    image: postgres:14-alpine
+    ports:
+      - "5443:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=orders_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/order-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - order-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  # Inventory Database
+  inventory-db:
+    image: postgres:14-alpine
+    ports:
+      - "5444:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=inventory_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/inventory-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - inventory-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  # Notification Database
+  notification-db:
+    image: postgres:14-alpine
+    ports:
+      - "5445:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=notification_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/notification-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - notification-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  # Payment Database
+  payment-db:
+    image: postgres:14-alpine
+    ports:
+      - "5446:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=payment_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/payment-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - payment-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+volumes:
+  product-db-data:
+  order-db-data:
+  inventory-db-data:
+  notification-db-data:
+  payment-db-data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  microservices-network:
+    driver: bridge 
