@@ -1,0 +1,262 @@
+services:
+  # Client Frontend
+  client:
+    image: ${ecr_registry_url}/client:latest
+    ports:
+      - "3011:80"
+    environment:
+      - VITE_API_URL=http://localhost:8089
+    depends_on:
+      - api-gateway
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # API Gateway
+  api-gateway:
+    image: ${ecr_registry_url}/api-gateway:latest
+    ports:
+      - "8089:8000"
+    environment:
+      - PRODUCT_SERVICE_URL=http://product-service:8080
+      - ORDER_SERVICE_URL=http://order-service:8081
+      - INVENTORY_SERVICE_URL=http://inventory-service:8082
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8083
+      - PAYMENT_SERVICE_URL=http://payment-service:8084
+    depends_on:
+      - product-service
+      - order-service
+      - inventory-service
+      - notification-service
+      - payment-service
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - microservices-network
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - microservices-network
+
+  # Product Service
+  product-service:
+    image: ${ecr_registry_url}/product-service:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=product-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=products_db
+    depends_on:
+      - product-db
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Order Service
+  order-service:
+    image: ${ecr_registry_url}/order-service:latest
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_HOST=order-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=orders_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASS=admin123
+      - INVENTORY_SERVICE_URL=http://inventory-service:8082
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8083
+    depends_on:
+      - order-db
+      - inventory-service
+      - notification-service
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Inventory Service
+  inventory-service:
+    image: ${ecr_registry_url}/inventory-service:latest
+    ports:
+      - "8082:8082"
+    environment:
+      - DB_HOST=inventory-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=inventory_db
+    depends_on:
+      - inventory-db
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Notification Service
+  notification-service:
+    image: ${ecr_registry_url}/notification-service:latest
+    ports:
+      - "8083:8083"
+    environment:
+      - DB_HOST=notification-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=notifications_db
+    depends_on:
+      - notification-db
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Payment Service
+  payment-service:
+    image: ${ecr_registry_url}/payment-service:latest
+    ports:
+      - "8084:8084"
+    environment:
+      - DB_HOST=payment-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=canh177
+      - DB_NAME=payments_db
+      - STRIPE_SECRET_KEY=$${STRIPE_SECRET_KEY}
+    depends_on:
+      - payment-db
+    restart: on-failure
+    networks:
+      - microservices-network
+
+  # Databases
+  product-db:
+    image: postgres:14-alpine
+    ports:
+      - "5441:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=products_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/product-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - product-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  order-db:
+    image: postgres:14-alpine
+    ports:
+      - "5442:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=orders_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/order-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - order-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  inventory-db:
+    image: postgres:14-alpine
+    ports:
+      - "5444:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=inventory_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/inventory-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - inventory-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  notification-db:
+    image: postgres:14-alpine
+    ports:
+      - "5445:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=notifications_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/notification-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - notification-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  payment-db:
+    image: postgres:14-alpine
+    ports:
+      - "5446:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=canh177
+      - POSTGRES_DB=payments_db
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - ./db-init/payment-db-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - payment-db-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - microservices-network
+
+volumes:
+  product-db-data:
+  order-db-data:
+  inventory-db-data:
+  notification-db-data:
+  payment-db-data:
+  redis_data:
+  rabbitmq_data:
+  prometheus_data:
+
+networks:
+  microservices-network:
+    driver: bridge

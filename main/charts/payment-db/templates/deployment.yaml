@@ -1,17 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "noti-service.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "payment-db.fullname" . }}
   labels:
-    {{- include "noti-service.labels" . | nindent 4 }}
+    {{- include "payment-db.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "noti-service.selectorLabels" . | nindent 6 }}
+      {{- include "payment-db.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -19,7 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "noti-service.labels" . | nindent 8 }}
+        {{- include "payment-db.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -28,7 +27,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "noti-service.serviceAccountName" . }}
+      serviceAccountName: {{ include "payment-db.serviceAccountName" . }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
