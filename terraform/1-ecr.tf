@@ -54,7 +54,7 @@ resource "null_resource" "build_and_push_images" {
       aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin ${local.aws_ecr_url}
       
       # Build image
-      docker build -t ${each.key}:latest -f ../${each.key}/Dockerfile ../${each.key}
+      docker build -t ${each.key}:latest -f ../${each.key}/Dockerfile ..
       
       # Tag for ECR
       docker tag ${each.key}:latest ${aws_ecr_repository.repositories[each.key].repository_url}:latest

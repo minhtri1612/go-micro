@@ -7,3 +7,27 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
 
 
+noti-service:
+  name: noti-service-deployment
+  namespace: go-microservice
+
+workload:
+  image: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/notification-service
+  tag: "latest" # It's better to override this with a specific tag during deployment
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "128m"
+    limits:
+      memory: "2Gi"
+      cpu: "1" # "1000m" is equivalent to "1" CPU core
+  ports:
+    containerPort: 8083
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: {{ .workload.ports.containerPort }}
+
+serviceAccount:
+  create: false
