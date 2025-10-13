@@ -8,6 +8,11 @@ import (
 
 // SetupRoutes configures the API routes for the order service
 func SetupRoutes(router *gin.Engine, orderController *controller.OrderController) {
+	// Health check endpoint
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "up"})
+	})
+
 	// Order routes
 	router.POST("/orders", orderController.CreateOrder)
 	router.POST("/orders/with-payment", orderController.CreateOrderWithPayment)

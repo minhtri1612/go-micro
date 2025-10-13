@@ -18,6 +18,13 @@
 *~
 # Various IDEs
 .project
+
+# Test files
+*.test.exe
+integration.test.exe
+unit.test.exe
+tests.test.exe
+*.exe
 .idea/
 *.tmproj
 .vscode/
