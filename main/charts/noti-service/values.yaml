@@ -1,13 +1,20 @@
 replicaCount: 2
 
-autoscaling:
+httpRoute:
   enabled: false
+  annotations: {}
+  parentRefs:
+    - name: external-gateway
+      namespace: istio-ingress
+
+autoscaling:
+  enabled: true
   minReplicas: 2
   maxReplicas: 5
   targetCPUUtilizationPercentage: 80
 
 
-noti-service:
+notiService:
   name: noti-service-deployment
   namespace: go-microservice
 
@@ -27,7 +34,10 @@ workload:
 service:
   type: ClusterIP
   port: 80
-  targetPort: {{ .workload.ports.containerPort }}
+  targetPort: 8083
+
+ingress:
+  enabled: false
 
 serviceAccount:
   create: false

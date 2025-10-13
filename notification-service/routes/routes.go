@@ -17,4 +17,9 @@ func SetupRoutes(router *gin.Engine, notificationController *controller.Notifica
 
 	// Order status update route
 	router.POST("/notifications/order-status", notificationController.ProcessOrderStatusUpdate)
+
+	// Health check endpoint
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "UP"})
+	})
 }
