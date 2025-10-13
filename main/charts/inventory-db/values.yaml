@@ -1,0 +1,34 @@
+nameOverride: ""
+fullnameOverride: "inventory-db"
+
+image:
+  repository: postgres
+  tag: "14-alpine"
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 5432
+
+auth:
+  username: "postgres"
+  password: "canh177"
+  database: "inventory_db"
+  hostAuthMethod: "md5"
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+
+initdb:
+  enabled: true
+  configMap: "inventory-db-init"
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1

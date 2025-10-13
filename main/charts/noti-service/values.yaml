@@ -20,14 +20,14 @@ notiService:
 
 workload:
   image: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/notification-service
-  tag: "latest" # It's better to override this with a specific tag during deployment
+  tag: "latest" # Using ECR image
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "128m"
+      memory: 256Mi
+      cpu: 128m
     limits:
-      memory: "2Gi"
-      cpu: "1" # "1000m" is equivalent to "1" CPU core
+      memory: 512Mi
+      cpu: 500m
   ports:
     containerPort: 8083
 
@@ -41,3 +41,6 @@ ingress:
 
 serviceAccount:
   create: false
+
+imagePullSecrets:
+  - name: ecr-secret

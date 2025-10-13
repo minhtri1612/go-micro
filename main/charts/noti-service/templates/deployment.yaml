@@ -4,21 +4,37 @@ metadata:
   name: {{ include "noti-service.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-{{ include "noti-service.labels" . | indent 4 }}
+    {{- include "noti-service.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-{{ include "noti-service.selectorLabels" . | indent 6 }}
+      {{- include "noti-service.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-{{ include "noti-service.selectorLabels" . | indent 8 }}
+        {{- include "noti-service.selectorLabels" . | nindent 8 }}
     spec:
       imagePullSecrets:
         - name: ecr-secret
       containers:
         - name: {{ .Values.notiService.name }}
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_DEFAULT_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: AWS_DEFAULT_REGION
           image: "{{ .Values.workload.image }}:{{ .Values.workload.tag }}"
           imagePullPolicy: Always
           ports:
@@ -44,24 +60,8 @@ spec:
                 name: {{ include "noti-service.fullname" . }}-secret
           resources:
             requests:
-              memory: {{ .Values.workload.resources.requests.memory }}
-              cpu: {{ .Values.workload.resources.requests.cpu }}
+              memory: "256Mi"
+              cpu: "128m"
             limits:
-              memory: {{ .Values.workload.resources.limits.memory }}
-              cpu: {{ .Values.workload.resources.limits.cpu }}
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 15
-            periodSeconds: 20
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          ports:
-            - name: http
-              containerPort: {{ .Values.workload.ports.containerPort }}
-              protocol: TCP
+              memory: "512Mi"
+              cpu: "500m"
