@@ -1,0 +1,50 @@
+replicaCount: 2
+
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs:
+    - name: external-gateway
+      namespace: istio-ingress
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+
+paymentService:
+  name: payment-service-deployment
+  namespace: go-microservice
+  database:
+    password: "changeme" # IMPORTANT: This should be overridden in a values file or with --set
+  stripe:
+    secretKey: "changeme" # IMPORTANT: This should be overridden with your real Stripe secret key
+
+workload:
+  image: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/payment-service
+  tag: "latest" # Using ECR image
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 128m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  ports:
+    containerPort: 8084
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8084
+
+ingress:
+  enabled: false
+
+serviceAccount:
+  create: false
+
+imagePullSecrets:
+  - name: ecr-secret
