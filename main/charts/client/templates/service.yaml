@@ -2,8 +2,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "client.fullname" . }}
+  namespace: {{ .Values.app.namespace | default .Release.Namespace }}
   labels:
-    {{- include "client.labels" . | nindent 4 }}
+    app: {{ include "client.name" . }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -12,4 +13,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "client.selectorLabels" . | nindent 4 }}
+    app: {{ include "client.name" . }}
