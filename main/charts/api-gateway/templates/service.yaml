@@ -1,15 +1,18 @@
+# api-gateway/templates/service.yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "api-gateway.fullname" . }}
+  namespace: {{ .Values.app.namespace | default .Release.Namespace }}
   labels:
     {{- include "api-gateway.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
+      targetPort: {{ .Values.service.targetPort }}
       protocol: TCP
       name: http
   selector:
-    {{- include "api-gateway.selectorLabels" . | nindent 4 }}
+    # Uses the common selector labels to target the deployment pods
+    app: {{ include "api-gateway.name" . }}

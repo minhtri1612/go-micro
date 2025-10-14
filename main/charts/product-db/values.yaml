@@ -127,9 +127,9 @@ resources: {}
 
 # This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
 livenessProbe:
-  httpGet:
-    path: /
-    port: http
+  # PostgreSQL is not an HTTP server. Use a TCP probe on the postgres port.
+  tcpSocket:
+    port: 5432
   initialDelaySeconds: 30
   periodSeconds: 10
   timeoutSeconds: 5

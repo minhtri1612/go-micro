@@ -1,0 +1,70 @@
+# api-gateway/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "api-gateway.fullname" . }}
+  namespace: {{ .Values.app.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "api-gateway.labels" . | nindent 4 }}
+spec:
+  # Using .Values.replicaCount as a fallback if autoscaling is disabled
+  replicas: {{ .Values.replicaCount | default 2 }}
+  selector:
+    matchLabels:
+      app: {{ include "api-gateway.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "api-gateway.name" . }}
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.workload.image }}:{{ .Values.workload.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ .Values.workload.ports.containerPort }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.workload.ports.containerPort | quote }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "api-gateway.fullname" . }}-configmap
+          resources:
+            {{- toYaml .Values.workload.resources | nindent 12 }}
+          # Health check based on the /health endpoint in main.go
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.workload.ports.containerPort }}
+            initialDelaySeconds: 15 # Increased delay to give the app time to start
+            periodSeconds: 10
+---
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "api-gateway.fullname" . }}
+  namespace: {{ .Values.app.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "api-gateway.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "api-gateway.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

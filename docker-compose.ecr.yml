@@ -47,11 +47,11 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     ports:
-      - "5673:5672"   # AMQP protocol port
-      - "15673:15672" # Management UI port
+      - "5672:5672"
+      - "15672:15672"
     environment:
-      - RABBITMQ_DEFAULT_USER=guest
-      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
@@ -86,11 +86,11 @@ services:
       - DB_PASSWORD=canh177
       - DB_NAME=orders_db
       - REDIS_HOST=redis
-      # - REDIS_PORT=6379 # Port is not needed, service name is enough
+      - REDIS_PORT=6379
       - RABBITMQ_HOST=rabbitmq
-      # - RABBITMQ_PORT=5672 # Port is not needed, service name is enough
-      - RABBITMQ_USER=guest
-      - RABBITMQ_PASS=guest
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASS=admin123
       - INVENTORY_SERVICE_URL=http://inventory-service:8082
       - NOTIFICATION_SERVICE_URL=http://notification-service:8083
     depends_on:
@@ -128,7 +128,7 @@ services:
       - DB_PORT=5432
       - DB_USER=postgres
       - DB_PASSWORD=canh177
-      - DB_NAME=notification_db
+      - DB_NAME=notifications_db
     depends_on:
       - notification-db
     restart: on-failure
@@ -145,7 +145,7 @@ services:
       - DB_PORT=5432
       - DB_USER=postgres
       - DB_PASSWORD=canh177
-      - DB_NAME=payment_db
+      - DB_NAME=payments_db
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
     depends_on:
       - payment-db
@@ -206,7 +206,7 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=canh177
-      - POSTGRES_DB=notification_db
+      - POSTGRES_DB=notifications_db
       - POSTGRES_HOST_AUTH_METHOD=md5
     volumes:
       - ./db-init/notification-db-init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -221,7 +221,7 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=canh177
-      - POSTGRES_DB=payment_db
+      - POSTGRES_DB=payments_db
       - POSTGRES_HOST_AUTH_METHOD=md5
     volumes:
       - ./db-init/payment-db-init.sql:/docker-entrypoint-initdb.d/init.sql

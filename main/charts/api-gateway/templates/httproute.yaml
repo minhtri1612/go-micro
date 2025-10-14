@@ -1,0 +1,26 @@
+# api-gateway/templates/httproute.yaml
+{{- if .Values.httpRoute.enabled }}
+apiVersion: gateway.networking.k8s.io/v1beta1 # Use v1beta1 or v1 depending on your cluster version
+kind: HTTPRoute
+metadata:
+  name: {{ include "api-gateway.fullname" . }}
+  namespace: {{ .Values.app.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "api-gateway.labels" . | nindent 4 }}
+  {{- with .Values.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  # This references the Istio/Envoy Gateway where traffic enters the cluster
+  parentRefs:
+    {{- toYaml .Values.httpRoute.parentRefs | nindent 4 }}
+  rules:
+    - matches:
+        - path:
+            type: Prefix
+            value: / # Match all paths
+      backendRefs:
+        - name: {{ include "api-gateway.fullname" . }} # Name of the Service to route to
+          port: {{ .Values.service.targetPort }}
+{{- end }}

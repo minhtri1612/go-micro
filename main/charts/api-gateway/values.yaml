@@ -1,3 +1,58 @@
-backend:
-  name: api-gateway
-  namespace: ecommerce
+replicaCount: 2 # Matches noti-service replica count
+
+httpRoute:
+  enabled: false # Disable HTTPRoute because Gateway API CRDs are not installed
+  annotations: {}
+  parentRefs:
+    - name: external-gateway # Assuming this is your central Istio/Envoy gateway
+      namespace: istio-ingress
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+app:
+  namespace: go-microservice # Assuming deployment in the same namespace
+
+# Container and Resource Configuration
+workload:
+  # IMPORTANT: Replace with your actual ECR path for the API Gateway image
+  image: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/api-gateway
+  tag: "latest" 
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 128m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  ports:
+    containerPort: 8000 # The port EXPOSEd in your API Gateway Dockerfile
+
+# Environment Variables for Internal Service Discovery (as used in main.go)
+env:
+  PRODUCT_SERVICE_URL: http://product-service:8080
+  ORDER_SERVICE_URL: http://order-service:8081
+  INVENTORY_SERVICE_URL: http://inventory-service:8082
+  NOTIFICATION_SERVICE_URL: http://notification-service:8083
+  PAYMENT_SERVICE_URL: http://payment-service:8084 # PORT is now managed by the deployment spec
+
+# Kubernetes Service for internal cluster access
+service:
+  type: ClusterIP # Typically ClusterIP, as traffic is routed via Ingress/Gateway
+  port: 80 # Service port 
+  targetPort: 8000 # Must match workload.ports.containerPort
+
+# Standard Ingress (alternative to HTTPRoute)
+# Set to 'false' if relying on the HTTPRoute/Istio setup above
+ingress:
+  host: api.example.com # Add a default host for the ingress
+  enabled: true
+
+serviceAccount:
+  create: false
+
+imagePullSecrets:
+  - name: ecr-secret
