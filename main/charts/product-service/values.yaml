@@ -14,8 +14,8 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
 
 
-inventoryService:
-  name: inventory-service-deployment
+productService:
+  name: product-service-deployment
   namespace: go-microservice
   stripe:
     secretKey: ""
@@ -33,12 +33,13 @@ workload:
       memory: 512Mi
       cpu: 500m
   ports:
-    containerPort: 8082
+    containerPort: 8080
+  pullPolicy: IfNotPresent
 
 service:
   type: ClusterIP
   port: 80
-  targetPort: 8082
+  targetPort: 8080
 
 ingress:
   enabled: false

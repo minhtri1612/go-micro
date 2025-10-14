@@ -65,7 +65,12 @@ func InitSchema(db *sql.DB) {
 		id SERIAL PRIMARY KEY,
 		name VARCHAR(255) NOT NULL,
 		description TEXT,
-		price DECIMAL(10, 2) NOT NULL
+		price DECIMAL(10, 2) NOT NULL,
+		category TEXT,
+		image_url TEXT,
+		stock_quantity INTEGER DEFAULT 0,
+		created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+		updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 	);`
 
 	_, err := db.Exec(createTableSQL)
