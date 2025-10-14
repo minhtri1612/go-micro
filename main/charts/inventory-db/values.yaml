@@ -10,6 +10,21 @@ service:
   type: ClusterIP
   port: 5432
 
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs: []
+
+ingress:
+  enabled: false
+  annotations: {}
+
+serviceAccount:
+  create: false
+  name: ""
+  automount: true
+  annotations: {}
+
 auth:
   username: "postgres"
   password: "canh177"
