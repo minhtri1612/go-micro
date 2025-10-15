@@ -9,3 +9,28 @@ variable "region" {
   type        = string
   default     = "ap-southeast-2"
 }
+
+variable "instance_name" {
+  description = "The name of the EC2 instance."
+  default     = "jenkins-server"
+}
+
+variable "instance_type" {
+  description = "Type of EC2 instance"
+  default     = "t2.2xlarge"
+}
+
+
+# Key Pair
+
+variable "key_name" {
+  description = "The name of the SSH key pair to access the instance."
+  default     = "jenkins-key"
+}
+
+# IAM Role
+
+variable "iam_role_name" {
+  description = "The IAM role name for jenkins instance."
+  default     = "jenkins-server-iam-role"
+}
