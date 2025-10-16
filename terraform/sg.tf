@@ -1,5 +1,5 @@
 
-resource "aws_security_group" "security-group" {
+resource "aws_security_group" "jenkins_sg" {
   name        = "devsecops-sg"
   description = "Allow TLS inbound traffic"
   vpc_id      = aws_vpc.main.id
