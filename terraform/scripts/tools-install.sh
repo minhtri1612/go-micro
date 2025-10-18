@@ -34,8 +34,8 @@ install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
 # Add Jenkins repository and install Jenkins
-wget -q -O - https://pkg.jenkins.io/debian/jenkins.io.key | apt-key add -
-echo "deb https://pkg.jenkins.io/debian binary/" > /etc/apt/sources.list.d/jenkins.list
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | gpg --dearmor -o /usr/share/keyrings/jenkins-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.gpg] https://pkg.jenkins.io/debian-stable binary/" > /etc/apt/sources.list.d/jenkins.list
 apt-get update -y
 apt-get install -y jenkins
 

@@ -218,6 +218,12 @@ resource "aws_eks_pod_identity_association" "aws_lbc" {
 }
 
 resource "helm_release" "aws_lbc" {
+  depends_on = [
+    null_resource.wait_for_eks_connection,
+    aws_iam_role_policy_attachment.aws_lbc,
+    aws_iam_role_policy_attachment.aws_lbc_additional,
+    aws_eks_pod_identity_association.aws_lbc
+  ]
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
@@ -233,7 +239,7 @@ resource "helm_release" "aws_lbc" {
     },
     {
       name  = "region"
-      value = var.region        
+      value = var.region
     },
     {
       name  = "serviceAccount.create"
@@ -249,13 +255,7 @@ resource "helm_release" "aws_lbc" {
     },
     {
       name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-      value = aws_iam_role.aws_lbc.arn        
+      value = aws_iam_role.aws_lbc.arn
     }
-  ]
-
-  depends_on = [
-    aws_iam_role_policy_attachment.aws_lbc,
-    aws_iam_role_policy_attachment.aws_lbc_additional,
-    aws_eks_pod_identity_association.aws_lbc
   ]
 }
