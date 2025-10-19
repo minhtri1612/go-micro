@@ -35,4 +35,4 @@ spec:
     name: http
   selector:
     app.kubernetes.io/name: prometheus
-    app.kubernetes.io/instance: kube-prometheus-stack
+    operator.prometheus.io/name: kube-prometheus-stack-prometheus
