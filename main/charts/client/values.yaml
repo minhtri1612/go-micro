@@ -32,11 +32,11 @@ workload:
     containerPort: 80 # The port EXPOSEd in your API Gateway Dockerfile
 
 env:
-  # This MUST be the public URL of your API Gateway Ingress
-  VITE_API_URL: "http://api.example.com"
+  # This MUST be the public URL of your API Gateway LoadBalancer
+  VITE_API_URL: "http://acc005e740df444a9b52e47e97bca11e-38662180.ap-southeast-2.elb.amazonaws.com"
 
 service:
-  type: ClusterIP # Typically ClusterIP, as traffic is routed via Ingress/Gateway
+  type: LoadBalancer # Changed to LoadBalancer for direct external access
   port: 80 # Service port 
   targetPort: 80  # Must match workload.ports.containerPort
 

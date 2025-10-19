@@ -58,7 +58,21 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "payment-service.fullname" . }}-configmap
-            - secretRef:
-                name: {{ include "payment-service.fullname" . }}-secret
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: payment-db
+                  key: POSTGRES_PASSWORD
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: payment-db
+                  key: POSTGRES_USER
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "payment-service.fullname" . }}-secret
+                  key: STRIPE_SECRET_KEY
           resources:
             {{- toYaml .Values.workload.resources | nindent 12 }}

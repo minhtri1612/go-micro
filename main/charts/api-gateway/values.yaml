@@ -33,15 +33,16 @@ workload:
 
 # Environment Variables for Internal Service Discovery (as used in main.go)
 env:
-  PRODUCT_SERVICE_URL: http://product-service:8080
-  ORDER_SERVICE_URL: http://order-service:8081
-  INVENTORY_SERVICE_URL: http://inventory-service:8082
-  NOTIFICATION_SERVICE_URL: http://notification-service:8083
-  PAYMENT_SERVICE_URL: http://payment-service:8084 # PORT is now managed by the deployment spec
+
+  PRODUCT_SERVICE_URL: http://go-micro-product-service:80
+  ORDER_SERVICE_URL: http://go-micro-order-service:80
+  INVENTORY_SERVICE_URL: http://go-micro-inventory-service:80
+  NOTIFICATION_SERVICE_URL: http://go-micro-noti-service:80
+  PAYMENT_SERVICE_URL: http://go-micro-payment-service:80 # PORT is now managed by the deployment spec
 
 # Kubernetes Service for internal cluster access
 service:
-  type: ClusterIP # Typically ClusterIP, as traffic is routed via Ingress/Gateway
+  type: LoadBalancer # Changed to LoadBalancer for direct external access
   port: 80 # Service port 
   targetPort: 8000 # Must match workload.ports.containerPort
 

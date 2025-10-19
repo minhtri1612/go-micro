@@ -6,6 +6,6 @@ metadata:
   labels:
     {{- include "product-service.labels" . | nindent 4 }}
 data:
-  DB_HOST: "product-db" # Assumes your DB service is named 'product-db'
+  DB_HOST: "go-micro-product-db" # Updated to use the correct service name
   DB_PORT: "5432"
   DB_NAME: "products_db"
