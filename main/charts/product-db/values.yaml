@@ -166,3 +166,7 @@ affinity: {}
 persistence:
   enabled: true
   size: 1Gi
+
+persistence:
+  enabled: true
+  size: 1Gi
