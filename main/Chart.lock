@@ -1,0 +1,45 @@
+dependencies:
+- name: product-db
+  repository: file://./charts/product-db
+  version: 0.1.0
+- name: inventory-db
+  repository: file://./charts/inventory-db
+  version: 0.1.0
+- name: order-db
+  repository: file://./charts/order-db
+  version: 0.1.0
+- name: payment-db
+  repository: file://./charts/payment-db
+  version: 0.1.0
+- name: notification-db
+  repository: file://./charts/notification-db
+  version: 0.1.0
+- name: rabbitmq
+  repository: file://./charts/rabbitmq
+  version: 0.1.0
+- name: redis
+  repository: file://./charts/redis
+  version: 0.1.0
+- name: product-service
+  repository: file://./charts/product-service
+  version: 0.1.0
+- name: inventory-service
+  repository: file://./charts/inventory-service
+  version: 0.1.0
+- name: order-service
+  repository: file://./charts/order-service
+  version: 0.1.0
+- name: payment-service
+  repository: file://./charts/payment-service
+  version: 0.1.0
+- name: noti-service
+  repository: file://./charts/noti-service
+  version: 0.1.0
+- name: api-gateway
+  repository: file://./charts/api-gateway
+  version: 0.1.0
+- name: client
+  repository: file://./charts/client
+  version: 0.1.0
+digest: sha256:6ce685f88b808cb505d86fabacc6e8e24bdf495286831df4e5f05e9a3f406081
+generated: "2025-10-22T19:36:25.156445632+07:00"

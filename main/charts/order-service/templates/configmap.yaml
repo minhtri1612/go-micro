@@ -8,7 +8,7 @@ metadata:
 data:
   DB_HOST: {{ .Values.orderService.database.host | default "order-db" | quote }}
   DB_PORT: {{ .Values.orderService.database.port | default "5432" | quote }}
-  DB_NAME: {{ .Values.orderService.database.name | default "orders_db" | quote }}
+  DB_NAME: {{ .Values.orderService.database.name | default "order_db" | quote }}
   DB_USER: {{ .Values.orderService.database.user | default "postgres" | quote }}
   REDIS_HOST: {{ .Values.orderService.redis.host | default "redis" | quote }}
   REDIS_PORT: {{ .Values.orderService.redis.port | default "6379" | quote }}

@@ -16,7 +16,7 @@ autoscaling:
 
 productService:
   name: product-service-deployment
-  namespace: go-microservice
+  namespace: go-micro
   stripe:
     secretKey: ""
   database:

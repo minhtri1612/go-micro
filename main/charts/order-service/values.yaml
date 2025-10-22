@@ -16,11 +16,11 @@ autoscaling:
 
 orderService:
   name: order-service-deployment
-  namespace: go-microservice
+  namespace: go-micro
   database:
     host: "order-db"
     port: "5432"
-    name: "orders_db"
+    name: "order_db"
     user: "postgres"
   redis:
     host: "redis"

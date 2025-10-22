@@ -21,6 +21,9 @@ spec:
       {{- end }}
       containers:
         - name: {{ .Values.productService.name }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "product-service.fullname" . }}-configmap
           env:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:

@@ -87,7 +87,8 @@ data "aws_iam_policy_document" "aws_lbc_policy" {
   statement {
     effect = "Allow"
     actions = [
-      "ec2:CreateSecurityGroup"
+      "ec2:CreateSecurityGroup",
+      "ec2:DeleteSecurityGroup"
     ]
     resources = ["*"]
   }

@@ -6,12 +6,19 @@ metadata:
   namespace: {{ .Values.app.namespace | default .Release.Namespace }}
   labels:
     app: {{ include "client.name" . }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
   rules:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          - path: /
+          - path: {{ .Values.ingress.path | default "/" }}
             pathType: Prefix
             backend:
               service:

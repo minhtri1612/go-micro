@@ -14,7 +14,7 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
 
 app:
-  namespace: go-microservice # Assuming deployment in the same namespace
+  namespace: go-micro # Assuming deployment in the same namespace
 
 # Container and Resource Configuration
 workload:
@@ -42,15 +42,22 @@ env:
 
 # Kubernetes Service for internal cluster access
 service:
-  type: LoadBalancer # Changed to LoadBalancer for direct external access
+  type: ClusterIP # Internal only - exposed via ALB ingress
   port: 80 # Service port 
   targetPort: 8000 # Must match workload.ports.containerPort
 
 # Standard Ingress (alternative to HTTPRoute)
 # Set to 'false' if relying on the HTTPRoute/Istio setup above
 ingress:
-  host: api.example.com # Add a default host for the ingress
+  host: ""
   enabled: true
+  className: "alb"
+  path: "/api"
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/group.name: go-micro-app
 
 serviceAccount:
   create: false

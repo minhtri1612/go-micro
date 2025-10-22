@@ -16,7 +16,7 @@ autoscaling:
 
 paymentService:
   name: payment-service-deployment
-  namespace: go-microservice
+  namespace: go-micro
   database:
     password: "changeme" # IMPORTANT: This should be overridden in a values file or with --set
   stripe:

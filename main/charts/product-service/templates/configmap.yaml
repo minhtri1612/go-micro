@@ -8,4 +8,4 @@ metadata:
 data:
   DB_HOST: "go-micro-product-db" # Updated to use the correct service name
   DB_PORT: "5432"
-  DB_NAME: "products_db"
+  DB_NAME: "product_db"
