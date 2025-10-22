@@ -4,7 +4,7 @@ interface CategoryFilterProps {
   onCategoryChange: (category: string) => void;
 }
 
-const CategoryFilter = ({ categories, selectedCategory, onCategoryChange }: CategoryFilterProps) => {
+export default function CategoryFilter({ categories, selectedCategory, onCategoryChange }: CategoryFilterProps) {
   return (
     <div className="flex flex-wrap gap-2">
       {categories.map((category) => (
@@ -22,7 +22,5 @@ const CategoryFilter = ({ categories, selectedCategory, onCategoryChange }: Cate
       ))}
     </div>
   );
-};
-
-export default CategoryFilter;
+}
 

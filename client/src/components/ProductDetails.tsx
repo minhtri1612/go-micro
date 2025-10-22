@@ -1,4 +1,4 @@
-import type { Product } from '../services/api';
+import type { Product } from '@/lib/api-client';
 
 interface ProductDetailsProps {
   product: Product;

@@ -4,7 +4,7 @@ interface SearchBarProps {
   placeholder?: string;
 }
 
-const SearchBar = ({ value, onChange, placeholder = "Search..." }: SearchBarProps) => {
+export const SearchBar = ({ value, onChange, placeholder = "Search..." }: SearchBarProps) => {
   return (
     <div className="relative">
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -32,6 +32,4 @@ const SearchBar = ({ value, onChange, placeholder = "Search..." }: SearchBarProp
     </div>
   );
 };
-
-export default SearchBar;
 

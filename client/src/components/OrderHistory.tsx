@@ -1,4 +1,4 @@
-import type { Order } from '../services/api';
+import type { Order } from '@/lib/api-client';
 
 interface OrderHistoryOrder extends Order {
   product_name?: string;

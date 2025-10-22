@@ -32,7 +32,87 @@ workload:
     containerPort: 80 # The port EXPOSEd in your API Gateway Dockerfile
 
 env:
-  # This MUST be the public URL of your API Gateway LoadBalancer
+minhtri@minhtri-OptiPlex-7010:~/Desktop/go-micro$ kubectl get pods -n go-microservice
+NAME                                   READY   STATUS    RESTARTS       AGE
+api-gateway-5b474b7c49-k8r78           1/1     Running   0              31m
+api-gateway-5b474b7c49-xxl2l           1/1     Running   0              31m
+client-54645d49fd-2n2qc                1/1     Running   0              31m
+client-54645d49fd-l4wf7                1/1     Running   0              31m
+go-micro-product-db-698b9c746b-pd6px   1/1     Running   0              13m
+inventory-db-0                         1/1     Running   0              7m58s
+inventory-service-76c9c66c4c-2xwvg     1/1     Running   10 (10m ago)   31m
+inventory-service-76c9c66c4c-9d87g     1/1     Running   10 (10m ago)   31m
+noti-service-b6d5c6c7-hkckx            1/1     Running   9 (10m ago)    31m
+noti-service-b6d5c6c7-ht8j8            1/1     Running   10 (11m ago)   31m
+notification-db-0                      1/1     Running   0              7m58s
+order-db-0                             1/1     Running   0              13m
+order-service-65cbcbbd8c-5wq4p         1/1     Running   8 (16m ago)    31m
+order-service-65cbcbbd8c-rrzq4         1/1     Running   8 (17m ago)    31m
+payment-db-0                           1/1     Running   0              7m58s
+payment-service-565b9756df-5sc4q       1/1     Running   0              56s
+payment-service-565b9756df-gxdw7       1/1     Running   0              56s
+product-db-594b49d749-m4w5q            1/1     Running   0              31m
+product-service-58cd4cd6cf-t5fvw       1/1     Running   0              31m
+product-service-58cd4cd6cf-tjwd8       1/1     Running   0              31m
+rabbitmq-784f575ffb-bmzc9              1/1     Running   0              31m
+redis-799cc8949b-xt6tk                 1/1     Running   0              31m
+minhtri@minhtri-OptiPlex-7010:~/Desktop/go-micro$ kubectl get nodes
+NAME                                             STATUS   ROLES    AGE    VERSION
+ip-10-0-18-177.ap-southeast-2.compute.internal   Ready    <none>   37h    v1.29.15-eks-113cf36
+ip-10-0-18-67.ap-southeast-2.compute.internal    Ready    <none>   168m   v1.29.15-eks-113cf36
+ip-10-0-33-143.ap-southeast-2.compute.internal   Ready    <none>   36h    v1.29.15-eks-113cf36
+ip-10-0-53-180.ap-southeast-2.compute.internal   Ready    <none>   31m    v1.29.15-eks-113cf36
+ip-10-0-59-98.ap-southeast-2.compute.internal    Ready    <none>   121m   v1.29.15-eks-113cf36
+minhtri@minhtri-OptiPlex-7010:~/Desktop/go-micro$ kubectl logs api-gateway-5b474b7c49-k8r78 -n go-microservice --tail=10
+[GIN] 2025/10/19 - 16:50:22 | 200 |       23.94µs |      10.0.59.98 | GET      "/health"
+[GIN] 2025/10/19 - 16:50:32 | 200 |      26.519µs |      10.0.59.98 | GET      "/health"
+[GIN] 2025/10/19 - 16:50:42 | 200 |      26.589µs |      10.0.59.98 | GET      "/health"
+[GIN] 2025/10/19 - 16:50:52 | 200 |      30.574µs |      10.0.59.98 | GET      "/health"
+[GIN] 2025/10/19 - 16:51:02 | 200 |      24.971µs |      10.0.59.98 | GET      "/health"
+[GIN] 2025/10/19 - 16:51:12 | 200 |      23.921µs |      10.0.59.98 | GET      "/health"
+[GIN] 2025/10/19 - 16:51:22 | 200 |      25.113µs |      10.0.59.98 | GET      "/health"
+[GIN] 2025/10/19 - 16:51:32 | 200 |      27.565µs |      10.0.59.98 | GET      "/health"
+[GIN] 2025/10/19 - 16:51:42 | 200 |      27.147µs |      10.0.59.98 | GET      "/health"
+[GIN] 2025/10/19 - 16:51:52 | 200 |      40.433µs |      10.0.59.98 | GET      "/health"
+minhtri@minhtri-OptiPlex-7010:~/Desktop/go-micro$ kubectl get pods -n go-microservice
+NAME                                          READY   STATUS             RESTARTS        AGE
+api-gateway-5b474b7c49-66bgf                  1/1     Running            0               16m
+api-gateway-5b474b7c49-xxl2l                  1/1     Running            0               53m
+go-micro-api-gateway-66748b7849-5q4f9         1/1     Running            0               6m49s
+go-micro-api-gateway-66748b7849-hz5hx         1/1     Running            0               6m49s
+go-micro-client-779fd88bb-bm445               1/1     Running            0               6m48s
+go-micro-client-779fd88bb-wfxl8               1/1     Running            0               6m48s
+go-micro-inventory-service-6df6978966-prrxx   1/1     Running            0               6m48s
+go-micro-inventory-service-6df6978966-vwpzk   1/1     Running            0               6m48s
+go-micro-noti-service-79bfbd6cb-l76rm         1/1     Running            0               6m48s
+go-micro-noti-service-79bfbd6cb-z49d8         1/1     Running            0               6m48s
+go-micro-order-service-59f4cbc95b-g9z8n       1/1     Running            0               6m48s
+go-micro-order-service-59f4cbc95b-qpg8d       1/1     Running            0               6m48s
+go-micro-payment-service-f8c9479dd-7qhwv      0/1     CrashLoopBackOff   5 (57s ago)     6m47s
+go-micro-payment-service-f8c9479dd-b8h2k      0/1     Error              5 (119s ago)    6m47s
+go-micro-product-db-698b9c746b-lm28g          1/1     Running            0               16m
+go-micro-product-service-85c4674c8f-5rplz     1/1     Running            0               6m46s
+go-micro-product-service-85c4674c8f-gj7z6     1/1     Running            0               6m47s
+go-micro-rabbitmq-59cf5594cf-82t2x            1/1     Running            0               6m46s
+go-micro-redis-6dd5ff9764-zcsrt               1/1     Running            0               6m46s
+inventory-db-0                                1/1     Running            0               15m
+inventory-service-76c9c66c4c-2xwvg            1/1     Running            16 (10m ago)    53m
+inventory-service-76c9c66c4c-9d87g            1/1     Running            16 (10m ago)    53m
+noti-service-b6d5c6c7-hkckx                   1/1     Running            9 (33m ago)     53m
+noti-service-b6d5c6c7-ht8j8                   1/1     Running            10 (33m ago)    53m
+notification-db-0                             1/1     Running            0               15m
+order-db-0                                    1/1     Running            0               15m
+order-service-65cbcbbd8c-5wxrf                1/1     Running            7 (8m25s ago)   16m
+order-service-65cbcbbd8c-rrzq4                1/1     Running            8 (39m ago)     53m
+payment-db-0                                  1/1     Running            0               15m
+payment-service-565b9756df-5sc4q              1/1     Running            0               23m
+payment-service-565b9756df-gxdw7              1/1     Running            0               23m
+product-db-594b49d749-m4w5q                   1/1     Running            0               53m
+product-service-58cd4cd6cf-t5fvw              1/1     Running            0               53m
+product-service-58cd4cd6cf-tjwd8              1/1     Running            0               53m
+rabbitmq-784f575ffb-bmzc9                     1/1     Running            0               53m
+redis-799cc8949b-xt6tk                        1/1     Running            0               53m
+minhtri@minhtri-OptiPlex-7010:~/Desktop/go-micro$   # This MUST be the public URL of your API Gateway LoadBalancer
   VITE_API_URL: "http://acc005e740df444a9b52e47e97bca11e-38662180.ap-southeast-2.elb.amazonaws.com"
 
 service:
