@@ -8,6 +8,7 @@ import (
 	"go-microservices/notification-service/routes"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -23,6 +24,9 @@ func main() {
 
 	// Initialize router
 	router := gin.Default()
+
+	// Add prometheus metrics endpoint
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Setup routes
 	routes.SetupRoutes(router, notificationController)

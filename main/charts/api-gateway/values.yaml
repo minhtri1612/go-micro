@@ -19,7 +19,7 @@ app:
 # Container and Resource Configuration
 workload:
   # IMPORTANT: Replace with your actual ECR path for the API Gateway image
-  image: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/api-gateway
+  image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/api-gateway
   tag: "latest" 
   resources:
     requests:
@@ -42,7 +42,7 @@ env:
 
 # Kubernetes Service for internal cluster access
 service:
-  type: ClusterIP # Internal only - exposed via ALB ingress
+  type: LoadBalancer # Use LoadBalancer instead of ALB ingress
   port: 80 # Service port 
   targetPort: 8000 # Must match workload.ports.containerPort
 
@@ -50,8 +50,7 @@ service:
 # Set to 'false' if relying on the HTTPRoute/Istio setup above
 ingress:
   host: ""
-  enabled: true
-  className: "alb"
+  enabled: false # Disable ingress, use LoadBalancer service instead
   path: "/api"
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing

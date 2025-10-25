@@ -19,7 +19,7 @@ app:
 # Container and Resource Configuration
 workload:
   # IMPORTANT: Replace with your actual ECR path for the API Gateway image
-  image: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/client
+  image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/client
   tag: "latest" 
   resources:
     requests:
@@ -36,20 +36,12 @@ env:
   VITE_API_URL: ""
 
 service:
-  type: ClusterIP # Internal only - exposed via ALB ingress
+  type: LoadBalancer # Use LoadBalancer instead of ALB ingress
   port: 80 # Service port 
   targetPort: 80  # Must match workload.ports.containerPort
 
 ingress:
-  enabled: true
-  className: "alb"
-  path: "/"
-  annotations:
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/healthcheck-path: /
-    alb.ingress.kubernetes.io/group.name: go-micro-app
-  host: ""
+  enabled: false # Disable ingress, use LoadBalancer service instead
 
 serviceAccount:
   create: false

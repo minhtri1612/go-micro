@@ -1,21 +1,25 @@
 #!/bin/bash
 
 # Update system
-yum update -y
+apt update -y
 
-# Install Java 11
-yum install -y java-11-openjdk java-11-openjdk-devel
+# Install Java 17
+apt install -y openjdk-17-jre-headless
 
 # Install Docker
-yum install -y docker
+apt install -y docker.io
 systemctl start docker
 systemctl enable docker
-usermod -a -G docker ec2-user
+usermod -a -G docker ubuntu
 
 # Install Jenkins
-wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
-rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
-yum install -y jenkins
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | tee \
+  /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+  https://pkg.jenkins.io/debian-stable binary/ | tee \
+  /etc/apt/sources.list.d/jenkins.list > /dev/null
+apt-get update -y
+apt-get install -y jenkins
 
 # Start and enable Jenkins
 systemctl start jenkins
@@ -23,12 +27,12 @@ systemctl enable jenkins
 
 # Install AWS CLI v2
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-yum install -y unzip
+apt install -y unzip
 unzip awscliv2.zip
 ./aws/install
 
 # Install Git
-yum install -y git
+apt install -y git
 
 # Install kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
@@ -69,7 +73,7 @@ chmod 755 $JENKINS_HOME
 systemctl restart jenkins
 
 # Create Jenkins user setup script
-cat > /home/ec2-user/setup-jenkins.sh << 'EOF'
+cat > /home/ubuntu/setup-jenkins.sh << 'EOF'
 #!/bin/bash
 echo "Jenkins is starting up..."
 echo "Please wait 2-3 minutes for Jenkins to be ready"
@@ -82,8 +86,8 @@ echo ""
 echo "Jenkins setup will be available in a few minutes..."
 EOF
 
-chmod +x /home/ec2-user/setup-jenkins.sh
-chown ec2-user:ec2-user /home/ec2-user/setup-jenkins.sh
+chmod +x /home/ubuntu/setup-jenkins.sh
+chown ubuntu:ubuntu /home/ubuntu/setup-jenkins.sh
 
 # Log completion
 echo "Jenkins installation completed at $(date)" >> /var/log/jenkins-install.log

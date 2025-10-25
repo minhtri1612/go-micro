@@ -23,7 +23,7 @@ inventoryService:
     password: "canh177"
 
 workload:
-  image: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/inventory-service
+  image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/inventory-service
   tag: "latest" # Using ECR image
   resources:
     requests:

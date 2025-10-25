@@ -2,7 +2,7 @@
 
 def call(Map config) {
     // Define the full ECR URI using the single ECR Account ID
-    def ECR_URI = '675613596870.dkr.ecr.ap-southeast-2.amazonaws.com'
+    def ECR_URI = '398045402467.dkr.ecr.ap-southeast-2.amazonaws.com'
     def FULL_IMAGE_NAME = "${ECR_URI}/${config.ecrRepoName}:${env.BUILD_NUMBER}"
     
     pipeline {

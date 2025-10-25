@@ -17,8 +17,8 @@ product-db:
     tag: "15"
     pullPolicy: IfNotPresent
   auth:
-    postgresPassword: "postgres"
-    database: "product_db"
+    postgresPassword: "canh177"
+    database: "products_db"
   persistence:
     enabled: true
     size: 8Gi
@@ -127,7 +127,7 @@ redis:
 product-service:
   enabled: true
   image:
-    repository: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/product-service
+    repository: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/product-service
     tag: "latest"
     pullPolicy: IfNotPresent
   replicaCount: 2
@@ -146,7 +146,7 @@ product-service:
 inventory-service:
   enabled: true
   image:
-    repository: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/inventory-service
+    repository: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/inventory-service
     tag: "latest"
     pullPolicy: IfNotPresent
   replicaCount: 2
@@ -164,10 +164,9 @@ inventory-service:
 
 order-service:
   enabled: true
-  image:
-    repository: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/order-service
+  workload:
+    image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/order-service
     tag: "latest"
-    pullPolicy: IfNotPresent
   replicaCount: 2
   service:
     type: ClusterIP
@@ -201,10 +200,9 @@ order-service:
 
 payment-service:
   enabled: true
-  image:
-    repository: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/payment-service
+  workload:
+    image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/payment-service
     tag: "latest"
-    pullPolicy: IfNotPresent
   replicaCount: 2
   service:
     type: ClusterIP
@@ -220,10 +218,9 @@ payment-service:
 
 noti-service:
   enabled: true
-  image:
-    repository: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/notification-service
+  workload:
+    image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/notification-service
     tag: "latest"
-    pullPolicy: IfNotPresent
   replicaCount: 2
   service:
     type: ClusterIP
@@ -240,10 +237,9 @@ noti-service:
 # API Gateway
 api-gateway:
   enabled: true
-  image:
-    repository: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/api-gateway
+  workload:
+    image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/api-gateway
     tag: "latest"
-    pullPolicy: IfNotPresent
   replicaCount: 2
   service:
     type: ClusterIP
@@ -271,10 +267,9 @@ api-gateway:
 # Frontend Client
 client:
   enabled: true
-  image:
-    repository: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/client
+  workload:
+    image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/client
     tag: "latest"
-    pullPolicy: IfNotPresent
   replicaCount: 2
   service:
     type: ClusterIP

@@ -30,7 +30,7 @@ orderService:
     port: "5672"
 
 workload:
-  image: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/order-service
+  image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/order-service
   tag: "latest" # Using ECR image
   resources:
     requests:
@@ -44,7 +44,7 @@ workload:
 
 service:
   type: ClusterIP
-  port: 80
+  port: 8083
   targetPort: 8081
 
 ingress:

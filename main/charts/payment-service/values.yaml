@@ -23,7 +23,7 @@ paymentService:
     secretKey: "changeme" # IMPORTANT: This should be overridden with your real Stripe secret key
 
 workload:
-  image: 675613596870.dkr.ecr.ap-southeast-2.amazonaws.com/payment-service
+  image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/payment-service
   tag: "latest" # Using ECR image
   resources:
     requests:

@@ -19,6 +19,14 @@ func GetDB() *sql.DB {
 	password := getEnv("DB_PASSWORD", "canh177")
 	dbname := getEnv("DB_NAME", "products_db")
 
+	// Debug logging
+	log.Printf("Database connection details:")
+	log.Printf("  Host: %s", host)
+	log.Printf("  Port: %s", port)
+	log.Printf("  User: %s", user)
+	log.Printf("  Password: %s", password)
+	log.Printf("  Database: %s", dbname)
+
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
 
@@ -52,6 +60,7 @@ func GetDB() *sql.DB {
 // getEnv gets an environment variable or returns a default value
 func getEnv(key, defaultValue string) string {
 	value := os.Getenv(key)
+	log.Printf("Environment variable %s: '%s' (default: '%s')", key, value, defaultValue)
 	if value == "" {
 		return defaultValue
 	}

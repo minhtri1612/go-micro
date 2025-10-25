@@ -25,7 +25,7 @@ kubectl create namespace go-micro --dry-run=client -o yaml | kubectl apply -f -
 # Create required secrets
 echo "🔐 Creating required secrets..."
 kubectl create secret docker-registry ecr-secret \
-  --docker-server=675613596870.dkr.ecr.ap-southeast-2.amazonaws.com \
+  --docker-server=398045402467.dkr.ecr.ap-southeast-2.amazonaws.com \
   --docker-username=AWS \
   --docker-password=$(aws ecr get-login-password --region ap-southeast-2) \
   --namespace=go-micro \
