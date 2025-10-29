@@ -123,7 +123,11 @@ pipeline {
                             stage("Build ${service.ecrRepoName}") {
                                 sh """
                                     echo "Building ${service.ecrRepoName}..."
-                                    docker build -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile .
+                                    if [ "${service.servicePath}" = "client" ]; then
+                                        docker build -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile ${service.servicePath}
+                                    else
+                                        docker build -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile .
+                                    fi
                                     docker tag ${service.ecrRepoName}:${BUILD_NUMBER} ${ECR_REGISTRY}/${service.ecrRepoName}:${BUILD_NUMBER}
                                     docker tag ${service.ecrRepoName}:${BUILD_NUMBER} ${ECR_REGISTRY}/${service.ecrRepoName}:latest
                                     docker push ${ECR_REGISTRY}/${service.ecrRepoName}:${BUILD_NUMBER}

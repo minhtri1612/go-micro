@@ -2,9 +2,9 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Copy go.mod and go.sum from the project root
-COPY ../go.mod ./
-COPY ../go.sum ./
+# Copy go.mod and go.sum from the project root (build context is repo root)
+COPY go.mod ./
+COPY go.sum ./
 
 # Download dependencies
 RUN go mod download
