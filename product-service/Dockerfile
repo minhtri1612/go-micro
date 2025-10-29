@@ -2,15 +2,15 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Copy go.mod and go.sum
-COPY ../go.mod ./
-COPY ../go.sum ./
+# Copy go.mod and go.sum from root
+COPY go.mod ./
+COPY go.sum ./
 
 # Download dependencies
 RUN go mod download
 
 # Copy source code
-COPY . .
+COPY product-service/ ./product-service/
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o /product-service ./product-service
@@ -27,4 +27,4 @@ COPY --from=builder /product-service .
 EXPOSE 8080
 
 # Run the application
-CMD ["./product-service"] 
+CMD ["./product-service"]

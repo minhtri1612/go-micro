@@ -39,6 +39,12 @@ spec:
             - name: data
               mountPath: /var/lib/postgresql/data
               subPath: postgres
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-script
+          configMap:
+            name: {{ include "product-db.fullname" . }}-init
   volumeClaimTemplates:
     - metadata:
         name: data

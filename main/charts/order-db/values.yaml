@@ -17,7 +17,7 @@ serviceAccount:
 auth:
   username: "postgres"
   password: "canh177"
-  database: "orders_db"
+  database: "order_db"
   hostAuthMethod: "md5"
 
 persistence:

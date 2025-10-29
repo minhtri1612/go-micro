@@ -10,7 +10,14 @@ data:
   DB_PORT: {{ .Values.orderService.database.port | default "5432" | quote }}
   DB_NAME: {{ .Values.orderService.database.name | default "order_db" | quote }}
   DB_USER: {{ .Values.orderService.database.user | default "postgres" | quote }}
-  REDIS_HOST: {{ .Values.orderService.redis.host | default "redis" | quote }}
+  DB_PASSWORD: {{ .Values.orderService.database.password | default "canh177" | quote }}
+  REDIS_HOST: {{ .Values.orderService.redis.host | default "go-micro-redis" | quote }}
   REDIS_PORT: {{ .Values.orderService.redis.port | default "6379" | quote }}
-  RABBITMQ_HOST: {{ .Values.orderService.rabbitmq.host | default "rabbitmq" | quote }}
+  RABBITMQ_HOST: {{ .Values.orderService.rabbitmq.host | default "go-micro-rabbitmq" | quote }}
   RABBITMQ_PORT: {{ .Values.orderService.rabbitmq.port | default "5672" | quote }}
+  RABBITMQ_USER: {{ .Values.orderService.rabbitmq.user | default "guest" | quote }}
+  RABBITMQ_PASS: {{ .Values.orderService.rabbitmq.password | default "guest" | quote }}
+  INVENTORY_SERVICE_URL: {{ .Values.orderService.inventoryServiceUrl | default "http://go-micro-inventory-service:8082" | quote }}
+  PRODUCT_SERVICE_URL: {{ .Values.orderService.productServiceUrl | default "http://go-micro-product-service:8081" | quote }}
+  PAYMENT_SERVICE_URL: {{ .Values.orderService.paymentServiceUrl | default "http://go-micro-payment-service:8084" | quote }}
+  NOTIFICATION_SERVICE_URL: {{ .Values.orderService.notificationServiceUrl | default "http://go-micro-noti-service:8083" | quote }}

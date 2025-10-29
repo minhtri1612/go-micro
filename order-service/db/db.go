@@ -17,7 +17,7 @@ func GetDB() *sql.DB {
 	port := getEnv("DB_PORT", "5432")
 	user := getEnv("DB_USER", "postgres")
 	password := getEnv("DB_PASSWORD", "canh177")
-	dbname := getEnv("DB_NAME", "orders_db")
+    dbname := getEnv("DB_NAME", "order_db")
 
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
@@ -60,17 +60,19 @@ func getEnv(key, defaultValue string) string {
 
 // InitSchema initializes the database schema
 func InitSchema(db *sql.DB) {
-	createTableSQL := `
-	CREATE TABLE IF NOT EXISTS orders (
-		id SERIAL PRIMARY KEY,
-		customer_id INT NOT NULL,
-		product_id INT NOT NULL,
-		quantity INT NOT NULL,
-		total_price DECIMAL(10, 2) NOT NULL,
-		status VARCHAR(50) NOT NULL
-	);`
+    createAndMigrateSQL := `
+    CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY,
+        customer_id INT NOT NULL,
+        product_id INT NOT NULL,
+        quantity INT NOT NULL,
+        total_price DECIMAL(10, 2) NOT NULL,
+        status VARCHAR(50) NOT NULL
+    );
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`
 
-	_, err := db.Exec(createTableSQL)
+    _, err := db.Exec(createAndMigrateSQL)
 	if err != nil {
 		log.Fatal(err)
 	}

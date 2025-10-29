@@ -50,12 +50,12 @@ spec:
             - name: RABBITMQ_USER
               valueFrom:
                 secretKeyRef:
-                  name: rabbitmq
+                  name: go-micro-rabbitmq
                   key: RABBITMQ_DEFAULT_USER
             - name: RABBITMQ_PASS
               valueFrom:
                 secretKeyRef:
-                  name: rabbitmq
+                  name: go-micro-rabbitmq
                   key: RABBITMQ_DEFAULT_PASS
           image: "{{ .Values.workload.image }}:{{ .Values.workload.tag }}"
           imagePullPolicy: Always

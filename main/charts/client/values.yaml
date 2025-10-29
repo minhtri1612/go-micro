@@ -20,7 +20,8 @@ app:
 workload:
   # IMPORTANT: Replace with your actual ECR path for the API Gateway image
   image: 398045402467.dkr.ecr.ap-southeast-2.amazonaws.com/client
-  tag: "latest" 
+  tag: "latest"
+  imagePullPolicy: Always 
   resources:
     requests:
       memory: 256Mi

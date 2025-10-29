@@ -37,6 +37,9 @@ kubectl create secret generic aws-secret \
   --from-literal=AWS_DEFAULT_REGION=ap-southeast-2 \
   --namespace=go-micro \
   --dry-run=client -o yaml | kubectl apply -f -
+          # Create application secrets
+echo "🔐 Creating application secrets..."
+./scripts/create-secrets.sh
 
 # Update Helm dependencies
 echo "📋 Updating Helm dependencies..."

@@ -1,10 +1,9 @@
-// For local development, always use localhost:8089
-// For production deployment, use empty string (same origin through ingress)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8089';
+// Prefer same-origin by default in all environments; override via VITE_API_URL when needed
+const API_BASE_URL = (import.meta.env.VITE_API_URL ?? '').trim();
 
 export class ApiError extends Error {
   public status: number;
-  public statusText: string;
+  public statusText: string;                                                                                                    
   public data?: any;
 
   constructor(

@@ -9,7 +9,7 @@ COPY . .
 # Download dependencies
 RUN go mod download
 
-# Build the payment service
+                                                                            # Build the payment service
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o payment-service ./payment-service
 
 # Final stage

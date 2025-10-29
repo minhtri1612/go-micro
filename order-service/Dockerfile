@@ -2,14 +2,15 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Copy go.mod and go.sum
+# Copy go.mod and go.sum from root
 COPY go.mod ./
+COPY go.sum ./
 
 # Download dependencies
 RUN go mod download
 
 # Copy source code
-COPY . .
+COPY order-service/ ./order-service/
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o /order-service ./order-service
@@ -26,4 +27,4 @@ COPY --from=builder /order-service .
 EXPOSE 8081
 
 # Run the application
-CMD ["./order-service"] 
+CMD ["./order-service"]

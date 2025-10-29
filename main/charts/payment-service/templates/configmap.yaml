@@ -6,6 +6,8 @@ metadata:
   labels:
     {{- include "payment-service.labels" . | nindent 4 }}
 data:
-  DB_HOST: "payment-db" # Assumes your DB service is named 'notification-db'
-  DB_PORT: "5432"
-  DB_NAME: "payment_db"
+  DB_HOST: {{ .Values.paymentService.database.host | default "payment-db" | quote }}
+  DB_PORT: {{ .Values.paymentService.database.port | default "5432" | quote }}
+  DB_NAME: {{ .Values.paymentService.database.name | default "payment_db" | quote }}
+  DB_USER: {{ .Values.paymentService.database.user | default "postgres" | quote }}
+  DB_PASSWORD: {{ .Values.paymentService.database.password | default "canh177" | quote }}

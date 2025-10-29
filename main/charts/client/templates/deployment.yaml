@@ -22,7 +22,7 @@ spec:
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.workload.image }}:{{ .Values.workload.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: {{ .Values.workload.imagePullPolicy | default "IfNotPresent" }}
           ports:
             - name: http
               containerPort: {{ .Values.workload.ports.containerPort }}
@@ -30,6 +30,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "client.fullname" . }}-configmap
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
           readinessProbe:
             httpGet:
               path: /
@@ -38,6 +42,13 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.workload.resources | nindent 12 }}
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: client-nginx-config
+            items:
+              - key: default.conf
+                path: default.conf
 ---
 {{- if .Values.autoscaling.enabled }}
 apiVersion: autoscaling/v2

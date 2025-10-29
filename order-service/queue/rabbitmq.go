@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -30,11 +31,19 @@ func InitRabbitMQ() error {
 	if rabbitHost == "" {
 		rabbitHost = "rabbitmq" // Docker default
 	}
+	rabbitUser := os.Getenv("RABBITMQ_USER")
+	if rabbitUser == "" {
+		rabbitUser = "guest"
+	}
+	rabbitPass := os.Getenv("RABBITMQ_PASS")
+	if rabbitPass == "" {
+		rabbitPass = "guest"
+	}
 
 	var err error
 	maxRetries := 10
 	for i := 0; i < maxRetries; i++ {
-		conn, err = amqp.Dial(fmt.Sprintf("amqp://guest:guest@%s:5672/", rabbitHost))
+		conn, err = amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s:5672/", rabbitUser, rabbitPass, rabbitHost))
 		if err == nil {
 			channel, err = conn.Channel()
 			if err == nil {

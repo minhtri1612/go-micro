@@ -17,8 +17,10 @@ product-db:
     tag: "15"
     pullPolicy: IfNotPresent
   auth:
-    postgresPassword: "canh177"
+    username: "postgres"
+    password: "canh177"
     database: "products_db"
+    hostAuthMethod: "md5"
   persistence:
     enabled: true
     size: 8Gi
@@ -33,8 +35,10 @@ inventory-db:
     tag: "15"
     pullPolicy: IfNotPresent
   auth:
-    postgresPassword: "postgres"
+    username: "postgres"
+    password: "canh177"
     database: "inventory_db"
+    hostAuthMethod: "md5"
   persistence:
     enabled: true
     size: 8Gi
@@ -49,8 +53,10 @@ order-db:
     tag: "15"
     pullPolicy: IfNotPresent
   auth:
-    postgresPassword: "postgres"
+    username: "postgres"
+    password: "canh177"
     database: "order_db"
+    hostAuthMethod: "md5"
   persistence:
     enabled: true
     size: 8Gi
@@ -65,8 +71,10 @@ payment-db:
     tag: "15"
     pullPolicy: IfNotPresent
   auth:
-    postgresPassword: "postgres"
+    username: "postgres"
+    password: "canh177"
     database: "payment_db"
+    hostAuthMethod: "md5"
   persistence:
     enabled: true
     size: 8Gi
@@ -81,8 +89,10 @@ notification-db:
     tag: "15"
     pullPolicy: IfNotPresent
   auth:
-    postgresPassword: "postgres"
+    username: "postgres"
+    password: "canh177"
     database: "notification_db"
+    hostAuthMethod: "md5"
   persistence:
     enabled: true
     size: 8Gi
@@ -98,8 +108,8 @@ rabbitmq:
     tag: "3-management"
     pullPolicy: IfNotPresent
   auth:
-    username: "admin"
-    password: "admin"
+    username: "guest"
+    password: "guest"
   persistence:
     enabled: true
     size: 8Gi
@@ -137,11 +147,11 @@ product-service:
   ingress:
     enabled: false
   env:
-    DB_HOST: "product-db"
+    DB_HOST: "go-micro-product-db"
     DB_PORT: "5432"
     DB_USER: "postgres"
-    DB_PASSWORD: "postgres"
-    DB_NAME: "product_db"
+    DB_PASSWORD: "canh177"
+    DB_NAME: "products_db"
 
 inventory-service:
   enabled: true
@@ -159,7 +169,7 @@ inventory-service:
     DB_HOST: "inventory-db"
     DB_PORT: "5432"
     DB_USER: "postgres"
-    DB_PASSWORD: "postgres"
+    DB_PASSWORD: "canh177"
     DB_NAME: "inventory_db"
 
 order-service:
@@ -170,7 +180,7 @@ order-service:
   replicaCount: 2
   service:
     type: ClusterIP
-    port: 8083
+    port: 8081
   ingress:
     enabled: false
   orderService:
@@ -179,24 +189,31 @@ order-service:
       port: "5432"
       name: "order_db"
       user: "postgres"
+      password: "canh177"
     redis:
-      host: "redis"
+      host: "go-micro-redis"
       port: "6379"
     rabbitmq:
-      host: "rabbitmq"
+      host: "go-micro-rabbitmq"
       port: "5672"
+      user: "guest"
+      password: "guest"
+    inventoryServiceUrl: "http://go-micro-inventory-service:8082"
+    productServiceUrl: "http://go-micro-product-service:8081"
+    paymentServiceUrl: "http://go-micro-payment-service:8084"
+    notificationServiceUrl: "http://go-micro-noti-service:8083"
   env:
     DB_HOST: "order-db"
     DB_PORT: "5432"
     DB_USER: "postgres"
-    DB_PASSWORD: "postgres"
+    DB_PASSWORD: "canh177"
     DB_NAME: "order_db"
-    REDIS_HOST: "redis"
+    REDIS_HOST: "go-micro-redis"
     REDIS_PORT: "6379"
-    RABBITMQ_HOST: "rabbitmq"
+    RABBITMQ_HOST: "go-micro-rabbitmq"
     RABBITMQ_PORT: "5672"
-    RABBITMQ_USER: "admin"
-    RABBITMQ_PASSWORD: "admin"
+    RABBITMQ_USER: "guest"
+    RABBITMQ_PASSWORD: "guest"
 
 payment-service:
   enabled: true
@@ -209,11 +226,18 @@ payment-service:
     port: 8084
   ingress:
     enabled: false
+  paymentService:
+    database:
+      host: "payment-db"
+      port: "5432"
+      name: "payment_db"
+      user: "postgres"
+      password: "canh177"
   env:
     DB_HOST: "payment-db"
     DB_PORT: "5432"
     DB_USER: "postgres"
-    DB_PASSWORD: "postgres"
+    DB_PASSWORD: "canh177"
     DB_NAME: "payment_db"
 
 noti-service:
@@ -231,7 +255,7 @@ noti-service:
     DB_HOST: "notification-db"
     DB_PORT: "5432"
     DB_USER: "postgres"
-    DB_PASSWORD: "postgres"
+    DB_PASSWORD: "canh177"
     DB_NAME: "notification_db"
 
 # API Gateway
@@ -258,11 +282,11 @@ api-gateway:
           - path: /api
             pathType: Prefix
   env:
-    PRODUCT_SERVICE_URL: "http://product-service:8081"
-    INVENTORY_SERVICE_URL: "http://inventory-service:8082"
-    ORDER_SERVICE_URL: "http://order-service:8083"
-    PAYMENT_SERVICE_URL: "http://payment-service:8084"
-    NOTIFICATION_SERVICE_URL: "http://noti-service:8085"
+    PRODUCT_SERVICE_URL: "http://go-micro-product-service:8081"
+    INVENTORY_SERVICE_URL: "http://go-micro-inventory-service:8082"
+    ORDER_SERVICE_URL: "http://go-micro-order-service:8081"
+    PAYMENT_SERVICE_URL: "http://go-micro-payment-service:8084"
+    NOTIFICATION_SERVICE_URL: "http://go-micro-noti-service:8083"
 
 # Frontend Client
 client:
