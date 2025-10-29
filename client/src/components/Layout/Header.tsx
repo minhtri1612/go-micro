@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation } from 'react-router-dom';
 import { ShoppingBag, ShoppingCart, Package, Bell } from 'lucide-react';
 import { useCartStore } from '@/stores/cart-store';
 import { useNotificationStore } from '@/stores/notification-store';
