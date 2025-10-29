@@ -58,10 +58,11 @@ pipeline {
                                     // Go services - run go test
                                     if (service.servicePath != 'client') {
                                         sh """
-                                            echo "Running Go tests for ${service.ecrRepoName}..."
-                                            cd ${service.servicePath}
-                                            go mod tidy
-                                            go test ./... -v || echo "No tests found or tests failed"
+                                            echo "Running Go tests for ${service.ecrRepoName} (Dockerized Go 1.24)..."
+                                            docker run --rm \
+                                              -v "$PWD":/workspace \
+                                              -w /workspace/${service.servicePath} \
+                                              golang:1.24 sh -lc 'go mod tidy && go test ./... -v || echo "No tests found or tests failed"'
                                         """
                                     } else {
                                         // Client (Node.js) - run npm test
