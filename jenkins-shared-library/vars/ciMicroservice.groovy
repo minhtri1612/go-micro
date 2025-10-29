@@ -37,9 +37,11 @@ def call(Map config) {
             
             stage('3. Login to ECR') {
                 steps {
-                    withCredentials([aws(credentialsId: 'aws-key', roleBindings: [])]) {
-                        sh "aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
-                    }
+                    // Use IAM instance role (no credentials needed when Jenkins runs on EC2)
+                    // The EC2 instance role already has ECR permissions
+                    sh """
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    """
                 }
             }
             
