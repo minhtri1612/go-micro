@@ -76,7 +76,7 @@ pipeline {
                                             docker run --rm \
                                               -v "$PWD":/workspace \
                                               -w /workspace/${service.servicePath} \
-                                              golang:1.24 sh -lc 'go mod tidy && go test ./... -v || echo "No tests found or tests failed"'
+                                              golang:1.24 sh -lc \"go mod tidy && go test ./... -v || echo 'No tests found or tests failed'\"
                                         """
                                     } else {
                                         // Client (Node.js) - run npm test
@@ -136,7 +136,6 @@ pipeline {
                         stage("Build ${service.ecrRepoName}") {
                             sh """
                                 echo "Building ${service.ecrRepoName}..."
-                                export DOCKER_BUILDKIT=1
                                 if [ "${service.servicePath}" = "client" ]; then
                                     docker build --pull -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile ${service.servicePath}
                                 else
