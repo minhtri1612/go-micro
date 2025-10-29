@@ -1,7 +1,0 @@
-@Library('jenkins-shared-library') _
-
-ciMicroservice(
-    jenkinsfileName: 'Jenkinsfile-product_service',
-    servicePath: 'product-service',
-    ecrRepoName: 'product-service'
-)

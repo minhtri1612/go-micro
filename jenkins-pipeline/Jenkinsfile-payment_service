@@ -1,7 +1,0 @@
-@Library('jenkins-shared-library') _
-
-ciMicroservice(
-    jenkinsfileName: 'Jenkinsfile-payment_service',
-    servicePath: 'payment-service',
-    ecrRepoName: 'payment-service'
-)

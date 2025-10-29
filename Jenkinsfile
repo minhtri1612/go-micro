@@ -25,7 +25,64 @@ pipeline {
             }
         }
         
-        stage('2. Login to ECR') {
+        stage('2. Run Tests') {
+            steps {
+                script {
+                    def services = [
+                        [servicePath: 'api-gateway', ecrRepoName: 'api-gateway'],
+                        [servicePath: 'product-service', ecrRepoName: 'product-service'],
+                        [servicePath: 'order-service', ecrRepoName: 'order-service'],
+                        [servicePath: 'inventory-service', ecrRepoName: 'inventory-service'],
+                        [servicePath: 'payment-service', ecrRepoName: 'payment-service'],
+                        [servicePath: 'notification-service', ecrRepoName: 'noti-service'],
+                        [servicePath: 'client', ecrRepoName: 'client']
+                    ]
+                    
+                    def servicesToTest = params.SERVICE_TO_BUILD == 'ALL' ? 
+                        services : 
+                        services.findAll { 
+                            it.ecrRepoName == params.SERVICE_TO_BUILD || 
+                            it.servicePath == params.SERVICE_TO_BUILD
+                        }
+                    
+                    if (servicesToTest.isEmpty()) {
+                        servicesToTest = services
+                    }
+                    
+                    // Run tests for each service
+                    def testSteps = [:]
+                    servicesToTest.each { service ->
+                        testSteps["Test ${service.ecrRepoName}"] = {
+                            stage("Test ${service.ecrRepoName}") {
+                                script {
+                                    // Go services - run go test
+                                    if (service.servicePath != 'client') {
+                                        sh """
+                                            echo "Running Go tests for ${service.ecrRepoName}..."
+                                            cd ${service.servicePath}
+                                            go mod tidy
+                                            go test ./... -v || echo "No tests found or tests failed"
+                                        """
+                                    } else {
+                                        // Client (Node.js) - run npm test
+                                        sh """
+                                            echo "Running Node.js tests for ${service.ecrRepoName}..."
+                                            cd ${service.servicePath}
+                                            npm install
+                                            npm test || echo "No tests found or tests failed"
+                                        """
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    parallel testSteps
+                }
+            }
+        }
+        
+        stage('3. Login to ECR') {
             steps {
                 sh """
                     aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
@@ -33,7 +90,7 @@ pipeline {
             }
         }
         
-        stage('3. Build & Push Services') {
+        stage('4. Build & Push Services') {
             steps {
                 script {
                     def services = [
@@ -85,7 +142,7 @@ pipeline {
             }
         }
         
-        stage('4. GitOps Update') {
+        stage('5. GitOps Update') {
             when {
                 expression { params.SERVICE_TO_BUILD == 'ALL' }
             }

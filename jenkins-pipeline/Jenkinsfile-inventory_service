@@ -1,7 +1,0 @@
-@Library('jenkins-shared-library') _
-
-ciMicroservice(
-    jenkinsfileName: 'Jenkinsfile-inventory_service',
-    servicePath: 'inventory-service',
-    ecrRepoName: 'inventory-service'
-)

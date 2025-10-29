@@ -1,7 +1,0 @@
-@Library('jenkins-shared-library') _
-
-ciMicroservice(
-    jenkinsfileName: 'Jenkinsfile-api_gateway',
-    servicePath: 'api-gateway',
-    ecrRepoName: 'api-gateway'
-)
