@@ -18,6 +18,20 @@ pipeline {
     }
     
     stages {
+        stage('0. Cleanup Disk') {
+            steps {
+                sh '''
+                    echo "Before cleanup disk usage:" && df -h
+                    docker ps -aq | xargs -r docker rm -f || true
+                    docker system prune -af || true
+                    docker volume prune -f || true
+                    docker builder prune -af || true
+                    rm -rf ~/.cache/go-build || true
+                    rm -rf ~/.npm/_cacache || true
+                    echo "After cleanup disk usage:" && df -h
+                '''
+            }
+        }
         stage('1. Code Checkout') {
             steps {
                 checkout scm
@@ -117,32 +131,29 @@ pipeline {
                     
                     echo "Building ${servicesToBuild.size()} service(s): ${servicesToBuild.collect { it.ecrRepoName }.join(', ')}"
                     
-                    // Build all services in parallel
-                    def buildSteps = [:]
+                    // Build services sequentially to reduce disk usage
                     servicesToBuild.each { service ->
-                        buildSteps[service.ecrRepoName] = {
-                            stage("Build ${service.ecrRepoName}") {
-                                sh """
-                                    echo "Building ${service.ecrRepoName}..."
-                                    if [ "${service.servicePath}" = "client" ]; then
-                                        docker build -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile ${service.servicePath}
-                                    else
-                                        docker build -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile .
-                                    fi
-                                    docker tag ${service.ecrRepoName}:${BUILD_NUMBER} ${ECR_REGISTRY}/${service.ecrRepoName}:${BUILD_NUMBER}
-                                    docker tag ${service.ecrRepoName}:${BUILD_NUMBER} ${ECR_REGISTRY}/${service.ecrRepoName}:latest
-                                    docker push ${ECR_REGISTRY}/${service.ecrRepoName}:${BUILD_NUMBER}
-                                    docker push ${ECR_REGISTRY}/${service.ecrRepoName}:latest
-                                    echo "✅ ${service.ecrRepoName} pushed to ECR"
-                                    docker rmi ${service.ecrRepoName}:${BUILD_NUMBER} || true
-                                    docker rmi ${ECR_REGISTRY}/${service.ecrRepoName}:${BUILD_NUMBER} || true
-                                    docker rmi ${ECR_REGISTRY}/${service.ecrRepoName}:latest || true
-                                """
-                            }
+                        stage("Build ${service.ecrRepoName}") {
+                            sh """
+                                echo "Building ${service.ecrRepoName}..."
+                                export DOCKER_BUILDKIT=1
+                                if [ "${service.servicePath}" = "client" ]; then
+                                    docker build --pull -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile ${service.servicePath}
+                                else
+                                    docker build --pull -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile .
+                                fi
+                                docker tag ${service.ecrRepoName}:${BUILD_NUMBER} ${ECR_REGISTRY}/${service.ecrRepoName}:${BUILD_NUMBER}
+                                docker tag ${service.ecrRepoName}:${BUILD_NUMBER} ${ECR_REGISTRY}/${service.ecrRepoName}:latest
+                                docker push ${ECR_REGISTRY}/${service.ecrRepoName}:${BUILD_NUMBER}
+                                docker push ${ECR_REGISTRY}/${service.ecrRepoName}:latest
+                                echo "✅ ${service.ecrRepoName} pushed to ECR"
+                                docker rmi ${service.ecrRepoName}:${BUILD_NUMBER} || true
+                                docker rmi ${ECR_REGISTRY}/${service.ecrRepoName}:${BUILD_NUMBER} || true
+                                docker rmi ${ECR_REGISTRY}/${service.ecrRepoName}:latest || true
+                                docker system prune -af || true
+                            """
                         }
                     }
-                    
-                    parallel buildSteps
                 }
             }
         }
