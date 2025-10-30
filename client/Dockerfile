@@ -1,13 +1,13 @@
-# Build stage
-FROM node:22-bookworm-slim AS builder
+# Build stage (pin to stable LTS to avoid npm v10 issues)
+FROM node:20-bullseye-slim AS builder
 
 WORKDIR /app
 
-# Copy package files
+    # Copy package files
 COPY package*.json ./
 
-# Install dependencies (include dev deps for build)
-RUN npm install
+# Install dependencies deterministically (uses package-lock.json)
+RUN npm ci --no-audit --no-fund
 
 # Copy source code
 COPY . .
