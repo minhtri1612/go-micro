@@ -8,6 +8,11 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    }
-  }
+    },
+    "skipLibCheck": true
+  },
+  "exclude": [
+    "node_modules",
+    "node_modules/undici-types/header.d.ts"
+  ]
 }

@@ -32,5 +32,8 @@
     "noUncheckedSideEffectImports": true
   },
   "include": ["src"],
-  "exclude": ["node_modules/undici-types/header.d.ts"]
+  "exclude": [
+    "node_modules",
+    "node_modules/undici-types/header.d.ts"
+  ]
 }

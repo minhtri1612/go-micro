@@ -3,7 +3,7 @@ fullnameOverride: "order-db"
 
 image:
   repository: postgres
-  tag: "14-alpine"
+  tag: "15-alpine"
   pullPolicy: Always
 
 service:

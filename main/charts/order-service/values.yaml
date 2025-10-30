@@ -18,16 +18,16 @@ orderService:
   name: order-service-deployment
   namespace: go-micro
   database:
-    host: "go-micro-main-order-db"
+    host: "order-db"
     port: "5432"
     name: "order_db"
     user: "postgres"
     password: "canh177"
   redis:
-    host: "go-micro-main-redis"
+    host: "go-micro-redis"
     port: "6379"
   rabbitmq:
-    host: "go-micro-main-rabbitmq"
+    host: "go-micro-rabbitmq"
     port: "5672"
     user: "guest"
     password: "guest"

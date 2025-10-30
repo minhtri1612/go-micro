@@ -156,7 +156,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('5. GitOps Update') {
             when {
                 expression { params.SERVICE_TO_BUILD == 'ALL' }
@@ -165,13 +165,14 @@ pipeline {
                 script {
                     sh """
                         git config user.name "Jenkins"
-                        git config user.email "jenkins@example.com"
+                        git config user.email "minhtri16122004@gmail.com"
                         # Update Helm chart values if needed
                         echo "GitOps update completed"
                     """
                 }
             }
-        }
+        }    
+        
     }
     
     post {

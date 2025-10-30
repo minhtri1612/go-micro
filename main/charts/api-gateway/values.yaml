@@ -33,11 +33,12 @@ workload:
 
 # Environment Variables for Internal Service Discovery (as used in main.go)
 env:
-  PRODUCT_SERVICE_URL: http://go-micro-product-service:8081
+  # Service ports: product/inventory/noti/payment expose port 80; order uses 8081
+  PRODUCT_SERVICE_URL: http://go-micro-product-service
   ORDER_SERVICE_URL: http://go-micro-order-service:8081
-  INVENTORY_SERVICE_URL: http://go-micro-inventory-service:8082
-  NOTIFICATION_SERVICE_URL: http://go-micro-noti-service:8083
-  PAYMENT_SERVICE_URL: http://go-micro-payment-service:8084
+  INVENTORY_SERVICE_URL: http://go-micro-inventory-service
+  NOTIFICATION_SERVICE_URL: http://go-micro-noti-service
+  PAYMENT_SERVICE_URL: http://go-micro-payment-service
 
 # Kubernetes Service for internal cluster access
 service:
