@@ -1,0 +1,12 @@
+node_modules
+dist
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+.git
+.gitignore
+Dockerfile
+README.md
+**/*.local.*
+**/*.env
+**/.env*
