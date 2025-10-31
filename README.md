@@ -53,10 +53,6 @@ kubectl get ingress -n go-micro -o wide
 - `main/scripts/create-secrets.sh` – idempotent app/DB secrets.
 - `terraform/scripts/jenkins-install.sh`, `terraform/scripts/tools-install.sh` – Jenkins and tools bootstrap.
 
-## Notes
-
-- Monitoring stack will be added later (do not include in this README yet).
-
 ## Project Highlights
 
 ✨ **Key Features**:
@@ -268,6 +264,11 @@ curl -X POST http://localhost:8081/orders/batch \
 - Error rate tracking
 - Resource utilization
 - Business metrics
+
+### Prometheus & Grafana Stack
+Prometheus scrapes labeled metrics from every microservice, stores them as time-series data, and powers alert rules that surface anomalies before they impact customers. Grafana sits on top of Prometheus to turn those metrics into actionable dashboards, drill-down visualizations, and SLA tracking so operators can correlate spikes, outages, and business KPIs in a single place. Together they provide unified observability across the entire platform, from infrastructure to application-level performance.
+
+![Prometheus & Grafana](prometheus+grafana.png)
 
 ## Environment Variables
 
