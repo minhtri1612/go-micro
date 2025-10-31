@@ -24,7 +24,7 @@ spec:
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.workload.image }}:{{ .Values.workload.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: {{ .Values.workload.pullPolicy | default "Always" }}
           ports:
             - name: http
               containerPort: {{ .Values.workload.ports.containerPort }}
