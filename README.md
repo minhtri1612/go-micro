@@ -1,6 +1,61 @@
-# Go Microservices Project
+# Go Microservices E‑Commerce on AWS EKS
 
-🚀 A modern, high-performance e-commerce platform built with microservices architecture using Go. Designed for scalability, resilience, and maintainability.
+A production‑style microservices platform built with Go and deployed to AWS EKS. It features Jenkins‑driven CI/CD, ArgoCD GitOps, Helm umbrella charts, ALB ingress, and fully automated infrastructure with Terraform.
+
+![CI/CD](CICD.png)
+
+## Architecture Overview
+
+Services: `api-gateway`, `product-service`, `order-service`, `inventory-service`, `notification-service`.
+
+- API Gateway exposes `/api/v1/*` and fan‑outs to services.
+- Each service has its own PostgreSQL DB; Redis used for caching; RabbitMQ for async events.
+- Order service includes circuit breaker, retries, worker‑pool batch processing.
+
+## Cloud & Platform
+
+- AWS EKS cluster provisioned with Terraform (VPC/subnets, IAM, node groups, ECR, ALB controller, security).
+- Helm umbrella chart (13 subcharts) deploys app services + data stores (PostgreSQL per service, Redis, RabbitMQ).
+- Ingress via AWS Load Balancer Controller (ALB). Client and API paths are publicly reachable.
+- Bash automation: `deploy-to-eks.sh` (umbrella release, secrets bootstrap via `main/scripts/create-secrets.sh`).
+
+## GitOps & CI/CD
+
+![ArgoCD](argocd.png)
+
+- Jenkins (multibranch + shared library) builds/tests, pushes images to ECR, and updates Helm/Git for release.
+- ArgoCD manages Kubernetes state declaratively with Applications per component; automated sync + self‑healing.
+- Separate ArgoCD app manifests for each service/db and shared components (client, gateway, ingress).
+
+## Quick Start (EKS)
+
+1) Build & push images (Jenkins pipeline or locally), then run:
+```bash
+./deploy-to-eks.sh
+```
+2) Open the ALB DNS from:
+```bash
+kubectl get ingress -n go-micro -o wide
+```
+
+## API Highlights
+
+- API Gateway: `/api/v1/products`, `/api/v1/orders`, `/api/v1/inventory`, `/api/v1/notifications`, `/health`.
+- Order service: create order, batch orders with worker pool, Redis caching, RabbitMQ event publish.
+
+## Environment (Order Service)
+
+`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `REDIS_HOST`, `RABBITMQ_HOST`, `INVENTORY_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`.
+
+## Repo Scripts
+
+- `deploy-to-eks.sh` – deploy umbrella chart and create secrets.
+- `main/scripts/create-secrets.sh` – idempotent app/DB secrets.
+- `terraform/scripts/jenkins-install.sh`, `terraform/scripts/tools-install.sh` – Jenkins and tools bootstrap.
+
+## Notes
+
+- Monitoring stack will be added later (do not include in this README yet).
 
 ## Project Highlights
 

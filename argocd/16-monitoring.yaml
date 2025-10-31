@@ -1,0 +1,79 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 61.7.1
+    helm:
+      skipCrds: false
+      values: |
+        prometheusOperator:
+          admissionWebhooks:
+            enabled: false
+          tls:
+            enabled: false
+        grafana:
+          adminPassword: grafana-admin
+          ingress:
+            enabled: true
+            ingressClassName: alb
+            annotations:
+              alb.ingress.kubernetes.io/scheme: internet-facing
+              alb.ingress.kubernetes.io/target-type: ip
+              alb.ingress.kubernetes.io/group.name: monitoring-grafana-rotated
+              alb.ingress.kubernetes.io/load-balancer-name: kps-grafana-rotated
+              alb.ingress.kubernetes.io/healthcheck-path: /
+              alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+            hosts: []
+            path: /
+            pathType: Prefix
+          service:
+            type: ClusterIP
+        prometheus:
+          ingress:
+            enabled: true
+            ingressClassName: alb
+            annotations:
+              alb.ingress.kubernetes.io/scheme: internet-facing
+              alb.ingress.kubernetes.io/target-type: ip
+              alb.ingress.kubernetes.io/group.name: monitoring-prometheus
+              alb.ingress.kubernetes.io/healthcheck-path: /
+              alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+            hosts: []
+            paths:
+              - /
+            pathType: Prefix
+          service:
+            type: ClusterIP
+        alertmanager:
+          ingress:
+            enabled: true
+            ingressClassName: alb
+            annotations:
+              alb.ingress.kubernetes.io/scheme: internet-facing
+              alb.ingress.kubernetes.io/target-type: ip
+              alb.ingress.kubernetes.io/group.name: monitoring-alertmanager
+              alb.ingress.kubernetes.io/healthcheck-path: /
+              alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+            hosts: []
+            paths:
+              - /
+            pathType: Prefix
+          service:
+            type: ClusterIP
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - Replace=true
+
