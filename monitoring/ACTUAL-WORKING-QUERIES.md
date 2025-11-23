@@ -97,50 +97,10 @@ sum(rate(container_cpu_usage_seconds_total{namespace="go-micro",container!="POD"
 # Memory usage per pod
 sum(container_memory_working_set_bytes{namespace="go-micro",container!="POD"}) by (pod)
 
-# Memory usage percentage (if limits set)
-sum(container_memory_working_set_bytes{namespace="go-micro",container!="POD"}) by (pod) / sum(container_spec_memory_limit_bytes{namespace="go-micro",container!="POD"}) by (pod) * 100
-
-# Pod restarts
-sum(increase(kube_pod_container_status_restarts_total{namespace="go-micro"}[1h])) by (pod)
 ```
 
-## 6. DATABASE METRICS ✅ (If postgres_exporter configured)
 
-```promql
-# PostgreSQL connections
-pg_stat_activity_count{datname!~"template.*|postgres"}
-
-# Database size
-pg_database_size_bytes{datname!~"template.*|postgres"}
-
-# Cache hit ratio
-sum(pg_stat_database_blks_hit{datname!~"template.*|postgres"}) / (sum(pg_stat_database_blks_hit{datname!~"template.*|postgres"}) + sum(pg_stat_database_blks_read{datname!~"template.*|postgres"}))
-```
-
-## 7. REDIS METRICS ✅ (If redis_exporter configured)
-
-```promql
-# Redis memory
-redis_memory_used_bytes
-
-# Redis connections
-redis_connected_clients
-
-# Redis commands per second
-sum(rate(redis_commands_total[5m]))
-```
-
-## 8. RABBITMQ METRICS ✅ (If rabbitmq_exporter configured)
-
-```promql
-# Queue messages
-rabbitmq_queue_messages
-
-# Queue messages ready
-rabbitmq_queue_messages_ready
-```
-
-## 9. PROMETHEUS HANDLER METRICS ✅
+## 6. PROMETHEUS HANDLER METRICS ✅
 
 ```promql
 # Total /metrics requests
@@ -150,7 +110,7 @@ promhttp_metric_handler_requests_total{job=~".*go-micro.*"}
 rate(promhttp_metric_handler_requests_total{job=~".*go-micro.*"}[5m])
 ```
 
-## 10. DASHBOARD QUERIES ✅
+## 7. DASHBOARD QUERIES ✅
 
 ### Service Overview Panel
 ```promql
@@ -164,17 +124,6 @@ count(up{job=~".*go-micro.*"} == 0)
 up{job=~".*go-micro.*"}
 ```
 
-### Order Service Dashboard
-```promql
-# Orders created today
-sum(increase(orders_created_total{job="go-micro/go-micro-order-service"}[24h]))
-
-# Orders per minute
-rate(orders_created_total{job="go-micro/go-micro-order-service"}[1m]) * 60
-
-# Active orders trend
-active_orders{job="go-micro/go-micro-order-service"}
-```
 
 ## ⚠️ METRICS THAT DON'T EXIST
 

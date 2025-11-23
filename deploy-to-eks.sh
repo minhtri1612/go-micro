@@ -39,7 +39,6 @@ kubectl create secret generic aws-secret \
   --dry-run=client -o yaml | kubectl apply -f -
           # Create application secrets
 echo "🔐 Creating application secrets..."
-./scripts/create-secrets.sh
 
 # Update Helm dependencies
 echo "📋 Updating Helm dependencies..."

@@ -137,7 +137,7 @@ pipeline {
                             sh """
                                 echo "Building ${service.ecrRepoName}..."
                                 if [ "${service.servicePath}" = "client" ]; then
-                                    docker build --pull -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile ${service.servicePath}
+                                    docker build --pull --build-arg VITE_API_URL="" -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile ${service.servicePath}
                                 else
                                     docker build --pull -t ${service.ecrRepoName}:${BUILD_NUMBER} -f ${service.servicePath}/Dockerfile .
                                 fi

@@ -49,7 +49,6 @@ spec:
             items:
               - key: default.conf
                 path: default.conf
----
 {{- if .Values.autoscaling.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
