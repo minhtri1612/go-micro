@@ -60,7 +60,7 @@ kubectl get ingress -n go-micro -o wide
 - Real-time order processing with Redis caching
 - Asynchronous communication via RabbitMQ
 - Comprehensive API documentation with Swagger
-- Automated CI/CD pipeline with GitHub Actions
+- Automated CI/CD pipeline with Jenkins
 - Container orchestration with Kubernetes
 - Advanced monitoring with Prometheus & Grafana
 
@@ -70,19 +70,9 @@ kubectl get ingress -n go-micro -o wide
 - RabbitMQ
 - Docker & Kubernetes
 - Prometheus & Grafana
-- GitHub Actions
+- Jenkins
 
-📈 **Performance**:
-- Handles 1000+ orders/minute
-- Sub-100ms response times
-- 99.9% uptime SLA
-- Automatic scaling & failover
 
-🔒 **Security**:
-- Container image scanning
-- Automated security testing
-- Secret management
-- Regular dependency updates
 
 ## Architecture
 
@@ -285,19 +275,6 @@ Prometheus scrapes labeled metrics from every microservice, stores them as time-
 - `WORKER_POOL_SIZE`: Number of workers for batch processing
 - `BATCH_TIMEOUT`: Timeout for batch processing
 
-## Contributing
-
-1. Fork repository
-2. Create feature branch
-3. Commit changes
-4. Push to branch
-5. Create Pull Request
-
-## License
-
-MIT License
-
-## Testing
 
 The project implements comprehensive testing strategies across different levels:
 
@@ -327,47 +304,6 @@ The project implements comprehensive testing strategies across different levels:
     func TestMessageQueueIntegration(t *testing.T)
     ```
 
-### Test Coverage
-- Coverage reports in HTML format
-- Track code coverage metrics
-- Identify untested code paths
-
-### Running Tests
-
-Use the provided Makefile commands:
-
-```bash
-# Run all tests
-make test
-
-# Run only unit tests
-make test-unit
-
-# Run only integration tests
-make test-integration
-
-# Generate coverage report
-make test-coverage
-
-# Clean test cache and coverage files
-make clean
-```
-
-### Test Environment
-- Separate test database
-- Isolated Redis instance (DB 1)
-- Test-specific RabbitMQ queues
-- Mock external services
-- Cleanup after tests
-
-### Test Features
-- Table-driven tests
-- Mock implementations
-- Parallel test execution
-- Timeout handling
-- Cleanup routines
-- Detailed assertions
-
 ## API Documentation
 
 ### Swagger/OpenAPI Documentation
@@ -387,134 +323,3 @@ The Swagger documentation includes:
 - Example requests
 - Response codes and examples
 
-### Postman Collection
-
-A comprehensive Postman collection is available for testing the APIs:
-
-1. Import the collection from `order-service/docs/Order_Service.postman_collection.json`
-2. Set up environment variables:
-   - `base_url`: Base URL for the service (e.g., http://localhost:8081)
-3. Use the collection to test:
-   - Create Order
-   - Get Order
-   - Create Batch Orders
-   - Update Order
-   - Delete Order
-   - Update Order Status
-
-## CI/CD Pipeline
-
-### Overview
-Project sử dụng GitHub Actions để tự động hóa quy trình CI/CD, bao gồm testing, security scanning và deployment.
-
-### Pipeline Stages
-
-#### 1. Test Stage
-- Chạy unit tests và integration tests
-- Tạo báo cáo test coverage
-- Upload kết quả test lên Codecov
-- Môi trường test bao gồm:
-  - PostgreSQL 13
-  - Redis 6
-  - RabbitMQ 3
-
-#### 2. Security Scan
-- Trivy: Quét lỗ hổng bảo mật trong dependencies và container images
-- gosec: Phân tích mã nguồn Go để tìm các vấn đề bảo mật
-- Chặn pipeline nếu phát hiện lỗ hổng nghiêm trọng
-
-#### 3. Build Stage
-- Build Docker images cho tất cả services
-- Push images lên GitHub Container Registry (ghcr.io)
-- Tag images với commit SHA
-
-#### 4. Deploy Stage
-- Tự động deploy khi merge vào nhánh main
-- Deploy lên Kubernetes cluster
-- Verify deployment status
-
-### Trigger Events
-Pipeline được kích hoạt khi:
-- Push code vào nhánh main
-- Tạo Pull Request vào nhánh main
-
-### Setup Requirements
-
-1. GitHub Repository Configuration:
-   ```bash
-   # Add required secrets
-   KUBE_CONFIG: Base64 encoded kubeconfig file
-   ```
-
-2. Enable GitHub Container Registry:
-   - Go to Settings > Packages
-   - Enable GitHub Container Registry
-
-3. Kubernetes Configuration:
-   - Cluster đã được setup
-   - Deployments cho tất cả services
-   - Correct RBAC permissions
-
-### Monitoring Pipeline
-
-1. View Pipeline Status:
-   - Go to repository's Actions tab
-   - Select workflow run to view details
-
-2. Test Results:
-   - Test reports available as artifacts
-   - Coverage reports on Codecov
-
-3. Security Scan Results:
-   - Trivy scan results in workflow logs
-   - gosec analysis results in workflow logs
-
-### Best Practices
-
-1. Commit Guidelines:
-   - Viết commit message rõ ràng
-   - Mỗi commit chỉ nên chứa một thay đổi logic
-   - Tham khảo [Conventional Commits](https://www.conventionalcommits.org/)
-
-2. Branch Strategy:
-   - Develop trên feature branches
-   - Tạo Pull Request để merge vào main
-   - Đảm bảo CI pass trước khi merge
-
-3. Security:
-   - Không commit secrets vào repository
-   - Regular dependency updates
-   - Review security scan results
-
-### Troubleshooting
-
-Common Issues:
-1. Test Failures:
-   - Check test logs in Actions tab
-   - Verify test environment configuration
-   - Check service dependencies
-
-2. Build Failures:
-   - Verify Dockerfile configurations
-   - Check resource limits
-   - Validate image tags
-
-3. Deploy Failures:
-   - Verify Kubernetes configuration
-   - Check cluster access
-   - Validate deployment manifests
-
-### Continuous Improvement
-
-1. Metrics to Monitor:
-   - Build time
-   - Test coverage
-   - Deployment frequency
-   - Failure rate
-   - Mean time to recovery
-
-2. Regular Maintenance:
-   - Update dependencies
-   - Review and optimize pipeline
-   - Update documentation
-   - Security patches # go-micro
