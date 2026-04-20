@@ -1,0 +1,75 @@
+env: dev
+
+backend:
+  image:
+    tag: "api-gateway-v1.0.1"  # Will be overridden per service
+  version: "v1.0.1"
+  replicaCount: 1
+
+database:
+  image:
+    tag: "15-alpine"
+  version: "15-alpine"
+  replicaCount: 1
+
+# Service-specific overrides
+api-gateway:
+  image:
+    tag: "api-gateway-v1.0.1"
+  replicaCount: 1
+
+product:
+  image:
+    tag: "product-service-v1.0.1"
+  replicaCount: 1
+
+inventory:
+  image:
+    tag: "inventory-service-v1.0.1"
+  replicaCount: 1
+
+order:
+  image:
+    tag: "order-service-v1.0.1"
+  replicaCount: 1
+
+payment:
+  image:
+    tag: "payment-service-v1.0.1"
+  replicaCount: 1
+
+noti:
+  image:
+    tag: "notification-service-v1.0.1"
+  replicaCount: 1
+
+client:
+  image:
+    tag: "client-v1.0.1"
+  replicaCount: 1
+
+# Database services
+product-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1
+
+inventory-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1
+
+order-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1
+
+payment-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1
+
+notification-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1

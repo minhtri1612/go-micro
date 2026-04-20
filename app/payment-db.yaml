@@ -1,0 +1,49 @@
+# Payment Database - Override values for template/values.yaml
+replicaCount: 1
+
+image:
+  repository: postgres
+  pullPolicy: IfNotPresent
+  tag: "15-alpine"
+
+service:
+  type: ClusterIP
+  port: 5432
+  targetPort: 5432
+
+ingress:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Database specific probes (TCP instead of HTTP)
+livenessProbe:
+  tcpSocket:
+    port: 5432
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  tcpSocket:
+    port: 5432
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+autoscaling:
+  enabled: false
+
+# Database needs persistent storage
+volumes:
+  - name: postgres-storage
+    persistentVolumeClaim:
+      claimName: payment-db-pvc
+
+volumeMounts:
+  - name: postgres-storage
+    mountPath: /var/lib/postgresql/data

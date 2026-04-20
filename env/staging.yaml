@@ -1,0 +1,49 @@
+env: staging
+
+backend:
+  image:
+    tag: "api-gateway-v1.0.1"
+  version: "v1.0.1"
+  replicaCount: 2
+
+database:
+  image:
+    tag: "15-alpine"
+  version: "15-alpine"
+  replicaCount: 1
+
+# Service-specific overrides
+api-gateway:
+  image:
+    tag: "api-gateway-v1.0.1"
+  replicaCount: 2
+
+product:
+  image:
+    tag: "product-service-v1.0.1"
+  replicaCount: 2
+
+inventory:
+  image:
+    tag: "inventory-service-v1.0.1"
+  replicaCount: 2
+
+order:
+  image:
+    tag: "order-service-v1.0.1"
+  replicaCount: 2
+
+payment:
+  image:
+    tag: "payment-service-v1.0.1"
+  replicaCount: 2
+
+noti:
+  image:
+    tag: "notification-service-v1.0.1"
+  replicaCount: 1
+
+client:
+  image:
+    tag: "client-v1.0.1"
+  replicaCount: 2
