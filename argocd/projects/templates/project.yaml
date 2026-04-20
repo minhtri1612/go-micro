@@ -9,7 +9,7 @@ spec:
   description: {{ .name }} environment project for Go Microservices
   sourceRepos:
 {{- range $.Values.sourceRepos }}
-  - {{ . }}
+  - {{ . | quote }}
 {{- end }}
   destinations:
 {{- range .namespaces }}
