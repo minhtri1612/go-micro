@@ -8,8 +8,8 @@ image:
 
 service:
   type: ClusterIP
-  port: 80
-  targetPort: 8080
+  port: 8000
+  targetPort: 8000
 
 ingress:
   enabled: true
@@ -33,14 +33,14 @@ resources:
 livenessProbe:
   httpGet:
     path: /health
-    port: 8080
+    port: 8000
   initialDelaySeconds: 30
   periodSeconds: 10
 
 readinessProbe:
   httpGet:
     path: /health
-    port: 8080
+    port: 8000
   initialDelaySeconds: 10
   periodSeconds: 5
 
