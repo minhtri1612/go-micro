@@ -34,6 +34,22 @@ spec:
       {{- end }}
       containers:
         - name: {{ .Chart.Name }}
+          {{- $svcName := default "" .Values.currentService }}
+          {{- $hasDbSecret := false }}
+          {{- $secretName := "" }}
+          {{- if hasKey .Values $svcName }}
+            {{- $svcConfig := index .Values $svcName }}
+            {{- if and $svcConfig (hasKey $svcConfig "secrets") (hasKey $svcConfig.secrets "target") (hasKey $svcConfig.secrets.target "name") }}
+              {{- $hasDbSecret = true }}
+              {{- $secretName = $svcConfig.secrets.target.name }}
+            {{- end }}
+          {{- end }}
+          {{- $isDbBackedService := or (eq $svcName "product") (eq $svcName "inventory") (eq $svcName "order") (eq $svcName "payment") (eq $svcName "noti") }}
+          {{- $dbServiceName := printf "%s-db" $svcName }}
+          {{- if eq $svcName "noti" }}
+            {{- $dbServiceName = "notification-db" }}
+          {{- end }}
+          {{- $dbNamespace := printf "databases-%s" (default "dev" .Values.env) }}
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -56,13 +72,27 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if kindIs "slice" .Values.containerEnv }}
+          {{- if or $isDbBackedService (kindIs "slice" .Values.containerEnv) }}
           env:
+            {{- if $isDbBackedService }}
+            - name: DB_HOST
+              value: "{{ $dbServiceName }}.{{ $dbNamespace }}.svc.cluster.local"
+            - name: DB_PORT
+              value: "5432"
+            {{- end }}
+            {{- if kindIs "slice" .Values.containerEnv }}
             {{- toYaml .Values.containerEnv | nindent 12 }}
+            {{- end }}
           {{- end }}
-          {{- if kindIs "slice" .Values.containerEnvFrom }}
+          {{- if or $hasDbSecret (kindIs "slice" .Values.containerEnvFrom) }}
           envFrom:
+            {{- if $hasDbSecret }}
+            - secretRef:
+                name: "{{ $secretName }}"
+            {{- end }}
+            {{- if kindIs "slice" .Values.containerEnvFrom }}
             {{- toYaml .Values.containerEnvFrom | nindent 12 }}
+            {{- end }}
           {{- end }}
           {{- with .Values.volumeMounts }}
           volumeMounts:
