@@ -2,30 +2,35 @@ env: staging
 projectName: go-micro
 
 product:
+  namespace: microservices-staging
   secrets:
     target:
       name: go-micro-product-secrets-staging
     remoteKey: go-micro/staging/app-credentials
 
 inventory:
+  namespace: microservices-staging
   secrets:
     target:
       name: go-micro-inventory-secrets-staging
     remoteKey: go-micro/staging/app-credentials
 
 order:
+  namespace: microservices-staging
   secrets:
     target:
       name: go-micro-order-secrets-staging
     remoteKey: go-micro/staging/app-credentials
 
 noti:
+  namespace: microservices-staging
   secrets:
     target:
       name: go-micro-noti-secrets-staging
     remoteKey: go-micro/staging/app-credentials
 
 payment:
+  namespace: microservices-staging
   secrets:
     target:
       name: go-micro-payment-secrets-staging

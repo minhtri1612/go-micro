@@ -2,30 +2,35 @@ env: dev
 projectName: go-micro
 
 product:
+  namespace: microservices-dev
   secrets:
     target:
       name: go-micro-product-secrets-dev
     remoteKey: go-micro/dev/app-credentials
 
 inventory:
+  namespace: microservices-dev
   secrets:
     target:
       name: go-micro-inventory-secrets-dev
     remoteKey: go-micro/dev/app-credentials
 
 order:
+  namespace: microservices-dev
   secrets:
     target:
       name: go-micro-order-secrets-dev
     remoteKey: go-micro/dev/app-credentials
 
 noti:
+  namespace: microservices-dev
   secrets:
     target:
       name: go-micro-noti-secrets-dev
     remoteKey: go-micro/dev/app-credentials
 
 payment:
+  namespace: microservices-dev
   secrets:
     target:
       name: go-micro-payment-secrets-dev

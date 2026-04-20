@@ -82,7 +82,7 @@ PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-adm
 argocd login localhost:8080 --insecure --username admin --password "$PASS"
 ```
 
-## 2) Register workload clusters in Argo CD
+### 1.4 Register workload clusters in Argo CD
 
 ```bash
 kubectl --context kind-dev apply -f kind/dev-argocd-manager.yaml
@@ -117,7 +117,107 @@ kubectl --context kind-management create secret generic cluster-prod -n argocd \
 kubectl --context kind-management label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster --overwrite
 ```
 
-## 3) Bootstrap GitOps apps
+### 1.5 Secrets for microservices (after cluster recreate)
+
+`go-micro` needs DB secrets for `product`, `inventory`, `order`, `noti`, `payment`.
+
+#### 1.5.1 External Secrets Operator + AWS Secrets Manager (recommended)
+
+1) Install ESO on workload clusters (`kind-dev`, `kind-staging`, `kind-prod`):
+
+```bash
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+
+for ctx in kind-dev kind-staging kind-prod; do
+  helm upgrade --install external-secrets external-secrets/external-secrets \
+    --version 0.19.2 \
+    -n external-secrets --create-namespace \
+    --kube-context "$ctx"
+done
+```
+
+2) Wait webhook ready before applying `ClusterSecretStore` / `ExternalSecret`:
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  kubectl --context "$ctx" -n external-secrets rollout status deployment/external-secrets-webhook --timeout=300s
+  kubectl --context "$ctx" -n external-secrets wait --for=condition=Ready pods --all --timeout=300s
+done
+```
+
+3) Create `aws-credentials` secret for ESO auth on each workload cluster:
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  kubectl --context "$ctx" -n external-secrets create secret generic aws-credentials \
+    --from-literal=access-key-id='YOUR_AWS_ACCESS_KEY_ID' \
+    --from-literal=secret-access-key='YOUR_AWS_SECRET_ACCESS_KEY' \
+    --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
+done
+```
+
+4) Ensure target namespaces exist:
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  env=${ctx#kind-}
+  kubectl --context "$ctx" create namespace "microservices-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
+  kubectl --context "$ctx" create namespace "databases-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
+done
+```
+
+5) Apply External Secrets manifests from this repo:
+
+```bash
+helm template external-secrets external-secrets/applications \
+  -f external-secrets/applications/values.yaml \
+  -f config/base/config.yaml \
+  -f config/env/dev.yaml \
+  | kubectl --context kind-dev apply -f -
+
+helm template external-secrets external-secrets/applications \
+  -f external-secrets/applications/values.yaml \
+  -f config/base/config.yaml \
+  -f config/env/staging.yaml \
+  | kubectl --context kind-staging apply -f -
+
+helm template external-secrets external-secrets/applications \
+  -f external-secrets/applications/values.yaml \
+  -f config/base/config.yaml \
+  -f config/env/prod.yaml \
+  | kubectl --context kind-prod apply -f -
+```
+
+6) Verify sync:
+
+```bash
+kubectl --context kind-dev get externalsecret,secret -A | rg "go-micro-|ExternalSecret"
+kubectl --context kind-staging get externalsecret,secret -A | rg "go-micro-|ExternalSecret"
+kubectl --context kind-prod get externalsecret,secret -A | rg "go-micro-|ExternalSecret"
+```
+
+#### 1.5.2 Static secrets with kubectl (when not using AWS/ESO)
+
+If AWS is not available yet, create app secrets manually in workload namespaces:
+
+```bash
+kubectl --context kind-dev create namespace microservices-dev --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
+kubectl --context kind-dev -n microservices-dev create secret generic go-micro-product-secrets-dev \
+  --from-literal=DB_USER=postgres --from-literal=DB_PASSWORD=localdev --from-literal=DB_NAME=product
+kubectl --context kind-dev -n microservices-dev create secret generic go-micro-inventory-secrets-dev \
+  --from-literal=DB_USER=postgres --from-literal=DB_PASSWORD=localdev --from-literal=DB_NAME=inventory
+kubectl --context kind-dev -n microservices-dev create secret generic go-micro-order-secrets-dev \
+  --from-literal=DB_USER=postgres --from-literal=DB_PASSWORD=localdev --from-literal=DB_NAME=order
+kubectl --context kind-dev -n microservices-dev create secret generic go-micro-noti-secrets-dev \
+  --from-literal=DB_USER=postgres --from-literal=DB_PASSWORD=localdev --from-literal=DB_NAME=notification
+kubectl --context kind-dev -n microservices-dev create secret generic go-micro-payment-secrets-dev \
+  --from-literal=DB_USER=postgres --from-literal=DB_PASSWORD=localdev --from-literal=DB_NAME=payment
+```
+
+Repeat for `kind-staging` and `kind-prod` using names from `config/env/staging.yaml` and `config/env/prod.yaml`.
+
+### 1.6 Apply bootstrap and sync GitOps apps
 
 ```bash
 kubectl --context kind-management apply -f argocd/bootstrap/01-projects.yaml
@@ -126,16 +226,21 @@ kubectl --context kind-management apply -f argocd/bootstrap/03-staging-microserv
 kubectl --context kind-management apply -f argocd/bootstrap/04-prod-microservices-stack.yaml
 ```
 
-## 4) External Secrets manifests (optional)
-
-After ESO is installed on each workload cluster:
+Sync order (important: sync projects first):
 
 ```bash
-helm template external-secrets external-secrets/applications \
-  -f external-secrets/applications/values.yaml \
-  -f config/base/config.yaml \
-  -f config/env/dev.yaml \
-  | kubectl --context kind-dev apply -f -
+argocd app sync argocd/argocd-projects
+sleep 3
+argocd app sync argocd/dev-microservices
+argocd app sync argocd/staging-microservices
+argocd app sync argocd/prod-microservices
+argocd app list
 ```
 
-Repeat for `staging` and `prod` with the corresponding env files.
+If Argo CLI shows `token signature is invalid`, reset and login again:
+
+```bash
+rm -rf ~/.argocd
+PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+argocd login localhost:8080 --insecure --username admin --password "$PASS"
+```
