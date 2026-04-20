@@ -22,7 +22,11 @@ spec:
       valueFiles:
         - ../app/{{ $appConfig.profile }}.yaml
         - ../env/{{ $.Values.env }}.yaml
+        - ../config/base/config.yaml
+        - ../config/env/{{ $.Values.env }}.yaml
       parameters:
+        - name: currentService
+          value: {{ $appName }}
         - name: nameOverride
           value: {{ $appName }}
         - name: fullnameOverride
@@ -45,6 +49,10 @@ spec:
     syncOptions:
       - CreateNamespace=true
   ignoreDifferences:
+    - group: apps
+      kind: Rollout
+      jsonPointers:
+        - /spec/replicas
     - group: apps
       kind: Deployment
       jsonPointers:
