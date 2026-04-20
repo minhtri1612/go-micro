@@ -10,7 +10,11 @@ This stack creates one JSON secret per environment in AWS Secrets Manager:
 - `DB_PASSWORD`
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
-- `STRIPE_SECRET_KEY`
+- `PRODUCT_DB_NAME`
+- `ORDER_DB_NAME`
+- `INVENTORY_DB_NAME`
+- `NOTIFICATION_DB_NAME`
+- `PAYMENT_DB_NAME`
 
 ## Run
 

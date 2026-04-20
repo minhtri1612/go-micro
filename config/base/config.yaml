@@ -14,6 +14,9 @@ product:
       - secretKey: DB_PASSWORD
         remoteRef:
           property: DB_PASSWORD
+      - secretKey: DB_NAME
+        remoteRef:
+          property: PRODUCT_DB_NAME
 
 inventory:
   namespace: microservices
@@ -27,6 +30,9 @@ inventory:
       - secretKey: DB_PASSWORD
         remoteRef:
           property: DB_PASSWORD
+      - secretKey: DB_NAME
+        remoteRef:
+          property: INVENTORY_DB_NAME
 
 order:
   namespace: microservices
@@ -40,6 +46,9 @@ order:
       - secretKey: DB_PASSWORD
         remoteRef:
           property: DB_PASSWORD
+      - secretKey: DB_NAME
+        remoteRef:
+          property: ORDER_DB_NAME
 
 noti:
   namespace: microservices
@@ -53,6 +62,9 @@ noti:
       - secretKey: DB_PASSWORD
         remoteRef:
           property: DB_PASSWORD
+      - secretKey: DB_NAME
+        remoteRef:
+          property: NOTIFICATION_DB_NAME
 
 payment:
   namespace: microservices
@@ -66,6 +78,6 @@ payment:
       - secretKey: DB_PASSWORD
         remoteRef:
           property: DB_PASSWORD
-      - secretKey: STRIPE_SECRET_KEY
+      - secretKey: DB_NAME
         remoteRef:
-          property: STRIPE_SECRET_KEY
+          property: PAYMENT_DB_NAME
