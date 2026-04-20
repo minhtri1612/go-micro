@@ -7,7 +7,7 @@ services:
     ports:
       - "3011:80"
     environment:
-      - VITE_API_URL=http://localhost:8089
+      - VITE_API_URL=http://localhost:18089
     depends_on:
       - api-gateway
     restart: on-failure
