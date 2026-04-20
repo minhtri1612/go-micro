@@ -1,49 +1,75 @@
-ount: 3aC"
-  replicv1.0.1lient-: "c tag   ge:
-ient:
-  ima 2
+env: prod
 
-cleplicaCount:1"
-  rvice-v1.0.-sertion "notifica:
-    tag:ti:
-  image
-no3
-plicaCount: 0.1"
-  reervice-v1.ment-sg: "payta
-    :gema
-  iment:t: 5
+backend:
+  image:
+    tag: "api-gateway-v1.0.1"
+  version: "v1.0.1"
+  replicaCount: 3
 
-pay replicaCoun
- e-v1.0.1"rder-servic "o:
-    tag:
-  image: 3
+database:
+  image:
+    tag: "15-alpine"
+  version: "15-alpine"
+  replicaCount: 1
 
-ordert:eplicaCoun"
-  r0.1ervice-v1.ntory-sg: "inve
-    ta:
-  image:oryent
+# Service-specific overrides
+api-gateway:
+  image:
+    tag: "api-gateway-v1.0.1"
+  replicaCount: 3
 
-inv 3aCount:plic"
-  revice-v1.0.1duct-serg: "proge:
-    ta ima
 product:
- 3
-nt: eplicaCou.1"
-  rateway-v1.0pi-g "ag:   tage:
- ma  iateway:
-rides
-api-g overce-specific
+  image:
+    tag: "product-service-v1.0.1"
+  replicaCount: 3
 
-# Serviunt: 1eplicaCone"
-  r"15-alpision:  veralpine"
- ag: "15-  t image:
-  e:
- atabas3
+inventory:
+  image:
+    tag: "inventory-service-v1.0.1"
+  replicaCount: 3
 
-dt: un  replicaCo"
-.1n: "v1.0sio ver
- .0.1"gateway-v1api-ag: "age:
-    t:
-  imndckerod
+order:
+  image:
+    tag: "order-service-v1.0.1"
+  replicaCount: 5
 
-baenv: p
+payment:
+  image:
+    tag: "payment-service-v1.0.1"
+  replicaCount: 5
+
+noti:
+  image:
+    tag: "notification-service-v1.0.1"
+  replicaCount: 3
+
+client:
+  image:
+    tag: "client-v1.0.1"
+  replicaCount: 3
+
+# Database services
+product-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1
+
+inventory-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1
+
+order-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1
+
+payment-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1
+
+notification-db:
+  image:
+    tag: "15-alpine"
+  replicaCount: 1

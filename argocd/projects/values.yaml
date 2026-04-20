@@ -1,0 +1,82 @@
+# ArgoCD Projects Configuration
+defaultServer: "https://kubernetes.default.svc"
+
+sourceRepos:
+  - "https://github.com/minhtri1612/go-micro.git"
+  - "*"
+
+environments:
+  - name: dev
+    cluster: dev
+    namespaces:
+      - microservices-dev
+      - databases-dev
+      - monitoring-dev
+    clusterResourceWhitelist:
+      - group: ""
+        kind: Namespace
+      - group: "rbac.authorization.k8s.io"
+        kind: ClusterRole
+      - group: "rbac.authorization.k8s.io"
+        kind: ClusterRoleBinding
+    namespaceResourceWhitelist:
+      - group: ""
+        kind: "*"
+      - group: "apps"
+        kind: "*"
+      - group: "networking.k8s.io"
+        kind: "*"
+      - group: "traefik.io"
+        kind: "*"
+      - group: "cilium.io"
+        kind: "*"
+
+  - name: staging
+    cluster: staging
+    namespaces:
+      - microservices-staging
+      - databases-staging
+      - monitoring-staging
+    clusterResourceWhitelist:
+      - group: ""
+        kind: Namespace
+      - group: "rbac.authorization.k8s.io"
+        kind: ClusterRole
+      - group: "rbac.authorization.k8s.io"
+        kind: ClusterRoleBinding
+    namespaceResourceWhitelist:
+      - group: ""
+        kind: "*"
+      - group: "apps"
+        kind: "*"
+      - group: "networking.k8s.io"
+        kind: "*"
+      - group: "traefik.io"
+        kind: "*"
+      - group: "cilium.io"
+        kind: "*"
+
+  - name: prod
+    cluster: prod
+    namespaces:
+      - microservices-prod
+      - databases-prod
+      - monitoring-prod
+    clusterResourceWhitelist:
+      - group: ""
+        kind: Namespace
+      - group: "rbac.authorization.k8s.io"
+        kind: ClusterRole
+      - group: "rbac.authorization.k8s.io"
+        kind: ClusterRoleBinding
+    namespaceResourceWhitelist:
+      - group: ""
+        kind: "*"
+      - group: "apps"
+        kind: "*"
+      - group: "networking.k8s.io"
+        kind: "*"
+      - group: "traefik.io"
+        kind: "*"
+      - group: "cilium.io"
+        kind: "*"

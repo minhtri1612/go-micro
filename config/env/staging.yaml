@@ -1,0 +1,32 @@
+env: staging
+projectName: go-micro
+
+product:
+  secrets:
+    target:
+      name: go-micro-product-secrets-staging
+    remoteKey: go-micro/staging/app-credentials
+
+inventory:
+  secrets:
+    target:
+      name: go-micro-inventory-secrets-staging
+    remoteKey: go-micro/staging/app-credentials
+
+order:
+  secrets:
+    target:
+      name: go-micro-order-secrets-staging
+    remoteKey: go-micro/staging/app-credentials
+
+noti:
+  secrets:
+    target:
+      name: go-micro-noti-secrets-staging
+    remoteKey: go-micro/staging/app-credentials
+
+payment:
+  secrets:
+    target:
+      name: go-micro-payment-secrets-staging
+    remoteKey: go-micro/staging/app-credentials

@@ -1,0 +1,71 @@
+projectName: go-micro
+secretStoreName: aws-secrets-manager
+region: ap-southeast-1
+
+product:
+  namespace: microservices
+  syncWave: "-2"
+  secrets:
+    refreshInterval: 1h
+    data:
+      - secretKey: DB_USER
+        remoteRef:
+          property: DB_USER
+      - secretKey: DB_PASSWORD
+        remoteRef:
+          property: DB_PASSWORD
+
+inventory:
+  namespace: microservices
+  syncWave: "-2"
+  secrets:
+    refreshInterval: 1h
+    data:
+      - secretKey: DB_USER
+        remoteRef:
+          property: DB_USER
+      - secretKey: DB_PASSWORD
+        remoteRef:
+          property: DB_PASSWORD
+
+order:
+  namespace: microservices
+  syncWave: "-2"
+  secrets:
+    refreshInterval: 1h
+    data:
+      - secretKey: DB_USER
+        remoteRef:
+          property: DB_USER
+      - secretKey: DB_PASSWORD
+        remoteRef:
+          property: DB_PASSWORD
+
+noti:
+  namespace: microservices
+  syncWave: "-2"
+  secrets:
+    refreshInterval: 1h
+    data:
+      - secretKey: DB_USER
+        remoteRef:
+          property: DB_USER
+      - secretKey: DB_PASSWORD
+        remoteRef:
+          property: DB_PASSWORD
+
+payment:
+  namespace: microservices
+  syncWave: "-2"
+  secrets:
+    refreshInterval: 1h
+    data:
+      - secretKey: DB_USER
+        remoteRef:
+          property: DB_USER
+      - secretKey: DB_PASSWORD
+        remoteRef:
+          property: DB_PASSWORD
+      - secretKey: STRIPE_SECRET_KEY
+        remoteRef:
+          property: STRIPE_SECRET_KEY

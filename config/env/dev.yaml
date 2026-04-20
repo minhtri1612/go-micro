@@ -1,0 +1,32 @@
+env: dev
+projectName: go-micro
+
+product:
+  secrets:
+    target:
+      name: go-micro-product-secrets-dev
+    remoteKey: go-micro/dev/app-credentials
+
+inventory:
+  secrets:
+    target:
+      name: go-micro-inventory-secrets-dev
+    remoteKey: go-micro/dev/app-credentials
+
+order:
+  secrets:
+    target:
+      name: go-micro-order-secrets-dev
+    remoteKey: go-micro/dev/app-credentials
+
+noti:
+  secrets:
+    target:
+      name: go-micro-noti-secrets-dev
+    remoteKey: go-micro/dev/app-credentials
+
+payment:
+  secrets:
+    target:
+      name: go-micro-payment-secrets-dev
+    remoteKey: go-micro/dev/app-credentials
