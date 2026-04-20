@@ -43,8 +43,7 @@ autoscaling:
 # Database needs persistent storage
 volumes:
   - name: postgres-storage
-    persistentVolumeClaim:
-      claimName: order-db-pvc
+    emptyDir: {}
 
 volumeMounts:
   - name: postgres-storage
