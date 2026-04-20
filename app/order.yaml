@@ -23,15 +23,15 @@ resources:
     memory: 256Mi
 
 livenessProbe:
-  httpGet:
-    path: /health
+  httpGet: null
+  tcpSocket:
     port: 8081
   initialDelaySeconds: 30
   periodSeconds: 10
 
 readinessProbe:
-  httpGet:
-    path: /health
+  httpGet: null
+  tcpSocket:
     port: 8081
   initialDelaySeconds: 10
   periodSeconds: 5
