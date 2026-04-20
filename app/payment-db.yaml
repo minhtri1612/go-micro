@@ -22,7 +22,7 @@ resources:
     cpu: 100m
     memory: 256Mi
 
-env:
+containerEnv:
   - name: POSTGRES_USER
     value: postgres
   - name: POSTGRES_PASSWORD

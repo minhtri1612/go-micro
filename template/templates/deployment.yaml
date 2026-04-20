@@ -56,13 +56,13 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.env }}
+          {{- if kindIs "slice" .Values.containerEnv }}
           env:
-            {{- toYaml . | nindent 12 }}
+            {{- toYaml .Values.containerEnv | nindent 12 }}
           {{- end }}
-          {{- with .Values.envFrom }}
+          {{- if kindIs "slice" .Values.containerEnvFrom }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
+            {{- toYaml .Values.containerEnvFrom | nindent 12 }}
           {{- end }}
           {{- with .Values.volumeMounts }}
           volumeMounts:
