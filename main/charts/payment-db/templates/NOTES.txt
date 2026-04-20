@@ -1,5 +1,0 @@
-The payment-db database is now deployed.
-
-It can be reached by other services within the cluster at the following address:
-
-  {{ include "payment-db.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
