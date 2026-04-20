@@ -22,6 +22,14 @@ resources:
     cpu: 100m
     memory: 256Mi
 
+env:
+  - name: POSTGRES_USER
+    value: postgres
+  - name: POSTGRES_PASSWORD
+    value: canh177
+  - name: POSTGRES_DB
+    value: payment_db
+
 # Database specific probes (TCP instead of HTTP)
 livenessProbe:
   httpGet: null
