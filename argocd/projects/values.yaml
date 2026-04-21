@@ -11,7 +11,7 @@ environments:
     namespaces:
       - microservices-dev
       - databases-dev
-      - monitoring-dev
+      - monitoring
       - metallb-system
       - argo-rollouts
       - kube-system
@@ -31,7 +31,7 @@ environments:
     namespaces:
       - microservices-staging
       - databases-staging
-      - monitoring-staging
+      - monitoring
       - metallb-system
       - argo-rollouts
       - kube-system
@@ -51,7 +51,7 @@ environments:
     namespaces:
       - microservices-prod
       - databases-prod
-      - monitoring-prod
+      - monitoring
       - metallb-system
       - argo-rollouts
       - kube-system
