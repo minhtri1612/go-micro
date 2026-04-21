@@ -124,11 +124,60 @@ kubectl --context kind-management create secret generic cluster-prod -n argocd \
 kubectl --context kind-management label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster --overwrite
 ```
 
-### 1.5 Secrets for microservices (after cluster recreate)
+### 1.5 GitOps bootstrap for Cilium/Traefik/Rollouts
+
+To match the old project behavior, infrastructure components are also managed by Argo CD.
+Apply these bootstrap apps from `kind-management`:
+
+```bash
+kubectl --context kind-management apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
+
+kubectl --context kind-management apply -f argocd/bootstrap/09-cilium-dev.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/10-cilium-staging.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/11-cilium-prod.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/18-cilium-management.yaml
+
+kubectl --context kind-management apply -f argocd/bootstrap/19-traefik-dev.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/20-traefik-staging.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/21-traefik-prod.yaml
+```
+
+Recommended sync order:
+
+```bash
+argocd app sync argocd/argocd-projects
+sleep 3
+argocd app sync argocd/argo-rollouts-dev
+argocd app sync argocd/argo-rollouts-staging
+argocd app sync argocd/argo-rollouts-prod
+argocd app sync argocd/cilium-dev
+argocd app sync argocd/cilium-staging
+argocd app sync argocd/cilium-prod
+argocd app sync argocd/cilium-management
+argocd app sync argocd/traefik-dev
+argocd app sync argocd/traefik-staging
+argocd app sync argocd/traefik-prod
+```
+
+Notes:
+- For workload clusters to really use Cilium CNI, recreate `kind-dev/staging/prod` with `disableDefaultCNI: true` in their kind config files.
+- `argocd/argo-rollouts-values.yaml` pins Traefik API group/version so rollouts do not fail with `TrafficRoutingError`.
+
+If Argo CLI shows `token signature is invalid`, reset and login again:
+
+```bash
+rm -rf ~/.argocd
+PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+argocd login localhost:8080 --insecure --username admin --password "$PASS"
+```
+
+### 1.6 Secrets for microservices (after cluster recreate)
 
 `go-micro` needs DB secrets for `product`, `inventory`, `order`, `noti`, `payment`.
 
-#### 1.5.1 External Secrets Operator + AWS Secrets Manager (recommended)
+#### 1.6.1 External Secrets Operator + AWS Secrets Manager (recommended)
 
 1) Install ESO on workload clusters (`kind-dev`, `kind-staging`, `kind-prod`):
 
@@ -204,7 +253,7 @@ kubectl --context kind-staging get externalsecret,secret -A | rg "go-micro-|Exte
 kubectl --context kind-prod get externalsecret,secret -A | rg "go-micro-|ExternalSecret"
 ```
 
-#### 1.5.2 Static secrets with kubectl (when not using AWS/ESO)
+#### 1.6.2 Static secrets with kubectl (when not using AWS/ESO)
 
 If AWS is not available yet, create app secrets manually in workload namespaces:
 
@@ -224,7 +273,7 @@ kubectl --context kind-dev -n microservices-dev create secret generic go-micro-p
 
 Repeat for `kind-staging` and `kind-prod` using names from `config/env/staging.yaml` and `config/env/prod.yaml`.
 
-### 1.6 Apply bootstrap and sync GitOps apps
+### 1.7 Apply bootstrap and sync GitOps apps
 
 ```bash
 kubectl --context kind-management apply -f argocd/bootstrap/01-projects.yaml
@@ -242,43 +291,6 @@ argocd app sync argocd/dev-microservices
 argocd app sync argocd/staging-microservices
 argocd app sync argocd/prod-microservices
 argocd app list
-```
-
-### 1.7 GitOps bootstrap for Cilium/Traefik/Rollouts
-
-To match the old project behavior, infrastructure components are also managed by Argo CD.
-Apply these bootstrap apps from `kind-management`:
-
-```bash
-kubectl --context kind-management apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
-kubectl --context kind-management apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
-kubectl --context kind-management apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
-
-kubectl --context kind-management apply -f argocd/bootstrap/09-cilium-dev.yaml
-kubectl --context kind-management apply -f argocd/bootstrap/10-cilium-staging.yaml
-kubectl --context kind-management apply -f argocd/bootstrap/11-cilium-prod.yaml
-kubectl --context kind-management apply -f argocd/bootstrap/18-cilium-management.yaml
-
-kubectl --context kind-management apply -f argocd/bootstrap/19-traefik-dev.yaml
-kubectl --context kind-management apply -f argocd/bootstrap/20-traefik-staging.yaml
-kubectl --context kind-management apply -f argocd/bootstrap/21-traefik-prod.yaml
-```
-
-Recommended sync order:
-
-```bash
-argocd app sync argocd/argocd-projects
-sleep 3
-argocd app sync argocd/argo-rollouts-dev
-argocd app sync argocd/argo-rollouts-staging
-argocd app sync argocd/argo-rollouts-prod
-argocd app sync argocd/cilium-dev
-argocd app sync argocd/cilium-staging
-argocd app sync argocd/cilium-prod
-argocd app sync argocd/cilium-management
-argocd app sync argocd/traefik-dev
-argocd app sync argocd/traefik-staging
-argocd app sync argocd/traefik-prod
 ```
 
 Notes:
