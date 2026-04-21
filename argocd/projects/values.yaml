@@ -12,31 +12,18 @@ environments:
       - microservices-dev
       - databases-dev
       - monitoring-dev
+      - metallb-system
+      - argo-rollouts
+      - kube-system
+      - cilium-secrets
+      - traefik
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
-      - group: "rbac.authorization.k8s.io"
-        kind: ClusterRole
-      - group: "rbac.authorization.k8s.io"
-        kind: ClusterRoleBinding
+      - group: "*"
+        kind: "*"
     namespaceResourceWhitelist:
-      - group: ""
-        kind: "*"
-      - group: "apps"
-        kind: "*"
-      - group: "autoscaling"
-        kind: "*"
-      - group: "argoproj.io"
-        kind: "Application"
-      - group: "argoproj.io"
-        kind: "Rollout"
-      - group: "argoproj.io"
-        kind: "AnalysisTemplate"
-      - group: "networking.k8s.io"
-        kind: "*"
-      - group: "traefik.io"
-        kind: "*"
-      - group: "cilium.io"
+      - group: "*"
         kind: "*"
 
   - name: staging
@@ -45,31 +32,18 @@ environments:
       - microservices-staging
       - databases-staging
       - monitoring-staging
+      - metallb-system
+      - argo-rollouts
+      - kube-system
+      - cilium-secrets
+      - traefik
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
-      - group: "rbac.authorization.k8s.io"
-        kind: ClusterRole
-      - group: "rbac.authorization.k8s.io"
-        kind: ClusterRoleBinding
+      - group: "*"
+        kind: "*"
     namespaceResourceWhitelist:
-      - group: ""
-        kind: "*"
-      - group: "apps"
-        kind: "*"
-      - group: "autoscaling"
-        kind: "*"
-      - group: "argoproj.io"
-        kind: "Application"
-      - group: "argoproj.io"
-        kind: "Rollout"
-      - group: "argoproj.io"
-        kind: "AnalysisTemplate"
-      - group: "networking.k8s.io"
-        kind: "*"
-      - group: "traefik.io"
-        kind: "*"
-      - group: "cilium.io"
+      - group: "*"
         kind: "*"
 
   - name: prod
@@ -78,29 +52,16 @@ environments:
       - microservices-prod
       - databases-prod
       - monitoring-prod
+      - metallb-system
+      - argo-rollouts
+      - kube-system
+      - cilium-secrets
+      - traefik
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
-      - group: "rbac.authorization.k8s.io"
-        kind: ClusterRole
-      - group: "rbac.authorization.k8s.io"
-        kind: ClusterRoleBinding
+      - group: "*"
+        kind: "*"
     namespaceResourceWhitelist:
-      - group: ""
-        kind: "*"
-      - group: "apps"
-        kind: "*"
-      - group: "autoscaling"
-        kind: "*"
-      - group: "argoproj.io"
-        kind: "Application"
-      - group: "argoproj.io"
-        kind: "Rollout"
-      - group: "argoproj.io"
-        kind: "AnalysisTemplate"
-      - group: "networking.k8s.io"
-        kind: "*"
-      - group: "traefik.io"
-        kind: "*"
-      - group: "cilium.io"
+      - group: "*"
         kind: "*"

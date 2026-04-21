@@ -244,6 +244,47 @@ argocd app sync argocd/prod-microservices
 argocd app list
 ```
 
+### 1.7 GitOps bootstrap for Cilium/Traefik/Rollouts
+
+To match the old project behavior, infrastructure components are also managed by Argo CD.
+Apply these bootstrap apps from `kind-management`:
+
+```bash
+kubectl --context kind-management apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
+
+kubectl --context kind-management apply -f argocd/bootstrap/09-cilium-dev.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/10-cilium-staging.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/11-cilium-prod.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/18-cilium-management.yaml
+
+kubectl --context kind-management apply -f argocd/bootstrap/19-traefik-dev.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/20-traefik-staging.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/21-traefik-prod.yaml
+```
+
+Recommended sync order:
+
+```bash
+argocd app sync argocd/argocd-projects
+sleep 3
+argocd app sync argocd/argo-rollouts-dev
+argocd app sync argocd/argo-rollouts-staging
+argocd app sync argocd/argo-rollouts-prod
+argocd app sync argocd/cilium-dev
+argocd app sync argocd/cilium-staging
+argocd app sync argocd/cilium-prod
+argocd app sync argocd/cilium-management
+argocd app sync argocd/traefik-dev
+argocd app sync argocd/traefik-staging
+argocd app sync argocd/traefik-prod
+```
+
+Notes:
+- For workload clusters to really use Cilium CNI, recreate `kind-dev/staging/prod` with `disableDefaultCNI: true` in their kind config files.
+- `argocd/argo-rollouts-values.yaml` pins Traefik API group/version so rollouts do not fail with `TrafficRoutingError`.
+
 If Argo CLI shows `token signature is invalid`, reset and login again:
 
 ```bash
