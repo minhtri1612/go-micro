@@ -14,7 +14,6 @@ spec:
       helm:
         valueFiles:
           - $values/cilium/cilium-values.yaml
-          - $values/cilium/cilium-values-spoke-bootstrap.yaml
           - $values/cilium/cilium-cluster-prod.yaml
           - $values/cilium/clustermesh-management-peer.yaml
     - repoURL: https://github.com/minhtri1612/go-micro.git
