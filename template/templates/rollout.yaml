@@ -32,7 +32,7 @@ spec:
       scaleDownDelaySeconds: {{ $rolloutCfg.blueGreen.scaleDownDelaySeconds | default 30 }}
     {{- else }}
     canary:
-      stableService: {{ $rolloutCfg.canary.stableService | default (printf "%s-stable" (include "template.fullname" .) ) }}
+      stableService: {{ $rolloutCfg.canary.stableService | default (include "template.fullname" .) }}
       canaryService: {{ $rolloutCfg.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .) ) }}
       {{- if $.Values.traefik.enabled }}
       trafficRouting:

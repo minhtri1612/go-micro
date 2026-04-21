@@ -59,7 +59,7 @@ spec:
 ---
 {{- end }}
 {{- else }}
-{{- $stableName := $rolloutCfg.canary.stableService | default (printf "%s-stable" $fullName) }}
+{{- $stableName := $rolloutCfg.canary.stableService | default $fullName }}
 {{- $canaryName := $rolloutCfg.canary.canaryService | default (printf "%s-canary" $fullName) }}
 {{- range $sn := list $stableName $canaryName }}
 apiVersion: v1
