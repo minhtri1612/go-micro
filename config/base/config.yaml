@@ -81,3 +81,6 @@ payment:
       - secretKey: DB_NAME
         remoteRef:
           property: PAYMENT_DB_NAME
+      - secretKey: STRIPE_SECRET_KEY
+        remoteRef:
+          property: STRIPE_SECRET_KEY
