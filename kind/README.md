@@ -19,6 +19,10 @@ Host API endpoints:
 - staging: `https://127.0.0.1:32443`
 - prod: `https://127.0.0.1:31443`
 
+Important:
+- This repo already requires Cilium bootstrap on `kind-management` before Argo CD install.
+- Recent DB OutOfSync incidents were caused by migration leftovers (`Deployment` + `StatefulSet` both present), not by missing Cilium.
+
 ## 1) Daily recreate flow (after reboot)
 
 ### 1.1 Delete old clusters (if any)
@@ -57,6 +61,7 @@ kubectl config get-contexts
 ```
 
 If you hit TLS or `0.0.0.0` endpoint issues, run `kubectl config set-cluster ...` again for all four contexts.
+Do not skip Cilium in this step: Argo CD pods may stay Pending on `kind-management` if CNI is not ready.
 
 ### 1.3 Install Argo CD on management
 
@@ -246,3 +251,22 @@ rm -rf ~/.argocd
 PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 argocd login localhost:8080 --insecure --username admin --password "$PASS"
 ```
+
+## 2) DB migration note (`Deployment` -> `StatefulSet`)
+
+When DB apps switch to `workloadKind: statefulset`, old `Deployment` objects with the same app name can remain in cluster.
+This causes Argo CD diff noise like `ignored (requires pruning)` even when StatefulSet is healthy.
+
+Check for leftovers (example on prod):
+
+```bash
+kubectl --context kind-prod get deploy,sts,pods -n databases-prod | rg 'product-db|inventory-db|order-db|payment-db|notification-db'
+```
+
+If both `deployment/<name>-db` and `statefulset/<name>-db` exist, remove the old Deployment:
+
+```bash
+kubectl --context kind-prod delete deployment product-db inventory-db order-db payment-db notification-db -n databases-prod
+```
+
+Then refresh/sync the corresponding Argo apps.
