@@ -244,3 +244,6 @@ affinity: {}
 extraEnv: []
 containerEnv: []
 containerEnvFrom: []
+
+testConnection:
+  enabled: false
