@@ -14,6 +14,7 @@ spec:
       helm:
         valueFiles:
           - $values/cilium/cilium-values-management.yaml
+          - $values/cilium/cilium-values-management-bootstrap.yaml
     - repoURL: https://github.com/minhtri1612/go-micro.git
       targetRevision: main
       ref: values
