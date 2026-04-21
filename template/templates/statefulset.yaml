@@ -7,7 +7,8 @@ metadata:
   labels:
     {{- include "template.labels" . | nindent 4 }}
 spec:
-  serviceName: {{ include "template.fullname" . }}-hl
+  {{- /* serviceName is immutable; legacy chart used fullname (main Service), not *-hl */}}
+  serviceName: {{ include "template.fullname" . }}
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
