@@ -1,14 +1,13 @@
-{{- if ne (default "Deployment" .Values.workload.kind) "StatefulSet" }}
+{{- if eq (default "Deployment" .Values.workload.kind) "StatefulSet" }}
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "template.fullname" . }}
   labels:
     {{- include "template.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
+  serviceName: {{ include "template.fullname" . }}
   replicas: {{ .Values.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
       {{- include "template.selectorLabels" . | nindent 6 }}

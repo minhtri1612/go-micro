@@ -1,5 +1,7 @@
 # Order Database - Override values for template/values.yaml
 replicaCount: 1
+workload:
+  kind: StatefulSet
 
 image:
   repository: postgres
