@@ -1,0 +1,49 @@
+{{- $wk := .Values.workloadKind | default "deployment" | lower }}
+{{- $cs := .Values.currentService | default "" }}
+{{- $svc := (index .Values $cs) | default dict }}
+{{- $rolloutCfg := deepCopy (.Values.rollout | default dict) }}
+{{- if hasKey $svc "rollout" }}
+{{- $rolloutCfg = mergeOverwrite $rolloutCfg ($svc.rollout | default dict) }}
+{{- end }}
+{{- if and (ne $wk "statefulset") ($rolloutCfg.enabled | default false) }}
+{{- $strategy := $rolloutCfg.strategy | default "canary" | lower }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "template.fullname" . }}
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicaCount | default .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.rollout.revisionHistoryLimit | default 3 }}
+  selector:
+    matchLabels:
+      {{- include "template.selectorLabels" . | nindent 6 }}
+  strategy:
+    {{- if eq $strategy "bluegreen" }}
+    blueGreen:
+      activeService: {{ $rolloutCfg.blueGreen.activeService | default (include "template.fullname" .) }}
+      previewService: {{ $rolloutCfg.blueGreen.previewService | default (printf "%s-preview" (include "template.fullname" .) ) }}
+      autoPromotionEnabled: {{ $rolloutCfg.blueGreen.autoPromotionEnabled | default true }}
+      scaleDownDelaySeconds: {{ $rolloutCfg.blueGreen.scaleDownDelaySeconds | default 30 }}
+    {{- else }}
+    canary:
+      stableService: {{ $rolloutCfg.canary.stableService | default (printf "%s-stable" (include "template.fullname" .) ) }}
+      canaryService: {{ $rolloutCfg.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .) ) }}
+      {{- if $.Values.traefik.enabled }}
+      trafficRouting:
+        traefik:
+          weightedTraefikServiceName: {{ printf "%s-weighted" (include "template.fullname" .) }}
+      {{- end }}
+      {{- with $rolloutCfg.canary.maxSurge }}
+      maxSurge: {{ . }}
+      {{- end }}
+      {{- with $rolloutCfg.canary.maxUnavailable }}
+      maxUnavailable: {{ . }}
+      {{- end }}
+      steps:
+        {{- tpl (toYaml $rolloutCfg.canary.steps) . | nindent 8 }}
+    {{- end }}
+  template:
+    {{- include "template.workloadPodSpec" . | nindent 4 }}
+{{- end }}

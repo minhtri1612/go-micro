@@ -1,0 +1,48 @@
+{{- $cs := .Values.currentService | default "" }}
+{{- $f := .Values.traefik.ingressRouteForServices | default list }}
+{{- $allow := or (eq (len $f) 0) (has $f $cs) }}
+{{- if and .Values.traefik.enabled (eq (.Values.routing.provider | default "traefik" | lower) "traefik") (ne (.Values.workloadKind | default "deployment" | lower) "statefulset") $allow }}
+{{- $fullName := include "template.fullname" . }}
+{{- $svcPort := .Values.service.port }}
+{{- $cur := .Values.currentService | default "" }}
+{{- $svc := (index .Values $cur) | default dict }}
+{{- $rolloutCfg := deepCopy (.Values.rollout | default dict) }}
+{{- if hasKey $svc "rollout" }}
+{{- $rolloutCfg = mergeOverwrite $rolloutCfg ($svc.rollout | default dict) }}
+{{- end }}
+{{- $rolloutEnabled := $rolloutCfg.enabled | default false }}
+{{- $strategy := $rolloutCfg.strategy | default "canary" | lower }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    {{- toYaml .Values.traefik.entryPoints | nindent 4 }}
+  routes:
+    - match: Host(`{{ .Values.traefik.hostname }}`) && PathPrefix(`{{ .Values.traefik.pathPrefix | default "/" }}`)
+      kind: Rule
+      services:
+        - name: {{ $fullName }}-weighted
+          kind: TraefikService
+{{- if and $rolloutEnabled (eq $strategy "bluegreen") }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $fullName }}-preview
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    {{- toYaml .Values.traefik.entryPoints | nindent 4 }}
+  routes:
+    - match: Host(`{{ .Values.traefik.hostname }}`) && HeaderRegexp(`X-Preview`, `true`)
+      kind: Rule
+      services:
+        - name: {{ $rolloutCfg.blueGreen.previewService | default (printf "%s-preview" $fullName) }}
+          port: {{ $svcPort }}
+{{- end }}
+{{- end }}

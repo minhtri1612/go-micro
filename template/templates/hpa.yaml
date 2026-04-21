@@ -1,4 +1,13 @@
 {{- if .Values.autoscaling.enabled }}
+{{- $wk := .Values.workloadKind | default "deployment" | lower }}
+{{- if ne $wk "statefulset" }}
+{{- $cs := .Values.currentService | default "" }}
+{{- $svc := (index .Values $cs) | default dict }}
+{{- $rolloutCfg := deepCopy (.Values.rollout | default dict) }}
+{{- if hasKey $svc "rollout" }}
+{{- $rolloutCfg = mergeOverwrite $rolloutCfg ($svc.rollout | default dict) }}
+{{- end }}
+{{- $rolloutEnabled := $rolloutCfg.enabled | default false }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -7,8 +16,13 @@ metadata:
     {{- include "template.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
+    {{- if $rolloutEnabled }}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    {{- else }}
     apiVersion: apps/v1
     kind: Deployment
+    {{- end }}
     name: {{ include "template.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
@@ -29,4 +43,5 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
     {{- end }}
+{{- end }}
 {{- end }}

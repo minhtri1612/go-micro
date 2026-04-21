@@ -7,8 +7,6 @@ Expand the name of the chart.
 
 {{/*
 Create a default fully qualified app name.
-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
-If release name contains chart name it will be used as a full name.
 */}}
 {{- define "template.fullname" -}}
 {{- if .Values.fullnameOverride }}
@@ -24,7 +22,7 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 
 {{/*
-Create chart name and version as used by the chart label.
+Create chart name and version as used in the chart label.
 */}}
 {{- define "template.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
@@ -36,18 +34,45 @@ Common labels
 {{- define "template.labels" -}}
 helm.sh/chart: {{ include "template.chart" . }}
 {{ include "template.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
+app.kubernetes.io/version: {{ include "template.appVersionCurrent" . | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Selector labels
+Selector labels — stable across ArgoCD release naming (aligns with practice_RKE2).
 */}}
 {{- define "template.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "template.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/instance: {{ .Values.nameOverride | default .Release.Name }}
+{{- end }}
+
+{{/*
+Image repository / tag for this release (values come from merged app/*.yaml).
+*/}}
+{{- define "template.imageRepositoryCurrent" -}}
+{{- .Values.image.repository -}}
+{{- end }}
+
+{{- define "template.imageTagCurrent" -}}
+{{- .Values.image.tag | default .Chart.AppVersion -}}
+{{- end }}
+
+{{- define "template.appVersionCurrent" -}}
+{{- .Values.image.tag | default .Chart.AppVersion -}}
+{{- end }}
+
+{{/*
+Root key in Values for ESO secret blocks (product-db -> product, notification-db -> noti).
+*/}}
+{{- define "template.esoRootName" -}}
+{{- $cs := .Values.currentService | default "" -}}
+{{- if eq $cs "notification-db" -}}
+noti
+{{- else if hasSuffix "-db" $cs -}}
+{{- trimSuffix "-db" $cs -}}
+{{- else -}}
+{{- $cs -}}
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -59,4 +84,156 @@ Create the name of the service account to use
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
+{{- end }}
+
+{{/*
+Pod template (metadata + spec) shared by Deployment, Rollout, and StatefulSet.
+*/}}
+{{- define "template.workloadPodSpec" -}}
+{{- $cs := .Values.currentService | default "" }}
+{{- $root := include "template.esoRootName" . }}
+{{- $rootCfg := dict }}
+{{- if $root }}
+{{- $rootCfg = index .Values $root | default dict }}
+{{- end }}
+{{- $isDatabasePod := hasSuffix "-db" $cs }}
+{{- $hasDbSecret := false }}
+{{- $secretName := "" }}
+{{- if and (not $isDatabasePod) $rootCfg (hasKey $rootCfg "secrets") (hasKey $rootCfg.secrets "target") (hasKey $rootCfg.secrets.target "name") }}
+{{- $hasDbSecret = true }}
+{{- $secretName = $rootCfg.secrets.target.name }}
+{{- end }}
+{{- $isDbBackedService := or (eq $cs "product") (eq $cs "inventory") (eq $cs "order") (eq $cs "payment") (eq $cs "noti") }}
+{{- $dbServiceName := printf "%s-db" $cs }}
+{{- if eq $cs "noti" }}
+{{- $dbServiceName = "notification-db" }}
+{{- end }}
+{{- $dbNamespace := printf "databases-%s" (default "dev" .Values.env) }}
+{{- $cur := $cs }}
+{{- $svcForCfg := dict }}
+{{- if $cur }}
+{{- $svcForCfg = index .Values $cur | default dict }}
+{{- end }}
+{{- $cfgFiles := ($svcForCfg.configs | default dict).files | default list }}
+{{- $hasCfgFiles := gt (len $cfgFiles) 0 }}
+{{- $filesMount := ($svcForCfg.configs | default dict).filesMountPath | default "/config/files" }}
+{{- $containerEnv := .Values.containerEnv | default list }}
+{{- $hasContainerEnv := and (kindIs "slice" $containerEnv) (gt (len $containerEnv) 0) }}
+{{- $extraEnv := .Values.extraEnv | default list }}
+{{- $hasExtraEnv := and (kindIs "slice" $extraEnv) (gt (len $extraEnv) 0) }}
+{{- $containerEnvFrom := .Values.containerEnvFrom | default list }}
+{{- $hasContainerEnvFrom := and (kindIs "slice" $containerEnvFrom) (gt (len $containerEnvFrom) 0) -}}
+metadata:
+  {{- with .Values.podAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+    {{- with .Values.podLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  serviceAccountName: {{ include "template.serviceAccountName" . }}
+  {{- with .Values.podSecurityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: {{ .Chart.Name }}
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      image: "{{ include "template.imageRepositoryCurrent" . }}:{{ include "template.imageTagCurrent" . }}"
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      ports:
+        - name: {{ .Values.service.portName | default "http" }}
+          containerPort: {{ .Values.service.containerPort | default .Values.service.port }}
+          protocol: TCP
+      {{- with .Values.livenessProbe }}
+      livenessProbe:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.readinessProbe }}
+      readinessProbe:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or $isDbBackedService $hasContainerEnv $hasExtraEnv }}
+      env:
+        {{- if $isDbBackedService }}
+        - name: DB_HOST
+          value: "{{ $dbServiceName }}.{{ $dbNamespace }}.svc.cluster.local"
+        - name: DB_PORT
+          value: "5432"
+        {{- end }}
+        {{- if $hasContainerEnv }}
+        {{- toYaml $containerEnv | nindent 8 }}
+        {{- end }}
+        {{- if $hasExtraEnv }}
+        {{- toYaml $extraEnv | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- if or $hasDbSecret $hasContainerEnvFrom }}
+      envFrom:
+        {{- if $hasDbSecret }}
+        - secretRef:
+            name: "{{ $secretName }}"
+        {{- end }}
+        {{- if $hasContainerEnvFrom }}
+        {{- toYaml $containerEnvFrom | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- if or .Values.volumeMounts (and .Values.runtimeConfig.enabled .Values.runtimeConfig.data) $hasCfgFiles }}
+      volumeMounts:
+        {{- with .Values.volumeMounts }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
+        - name: app-config
+          mountPath: {{ .Values.runtimeConfig.mountPath | default "/app/config" }}
+          readOnly: true
+        {{- end }}
+        {{- if $hasCfgFiles }}
+        - name: svc-config-files
+          mountPath: {{ $filesMount }}
+          readOnly: true
+        {{- end }}
+      {{- end }}
+  {{- if or .Values.volumes (and .Values.runtimeConfig.enabled .Values.runtimeConfig.data) $hasCfgFiles }}
+  volumes:
+    {{- with .Values.volumes }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
+    - name: app-config
+      configMap:
+        name: {{ include "template.fullname" . }}-config
+    {{- end }}
+    {{- if $hasCfgFiles }}
+    - name: svc-config-files
+      configMap:
+        name: {{ include "template.fullname" . }}-files
+    {{- end }}
+  {{- end }}
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}

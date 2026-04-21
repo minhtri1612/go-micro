@@ -1,0 +1,21 @@
+# Overlay Argo: cilium-prod (cluster mesh spoke)
+cluster:
+  name: prod
+  id: 4
+
+# Hubble UI: http://<IP prod-control-plane>:31203
+hubble:
+  ui:
+    enabled: true
+    service:
+      type: NodePort
+      nodePort: 31203
+
+clustermesh:
+  config:
+    enabled: true
+  apiserver:
+    service:
+      type: LoadBalancer
+      annotations:
+        metallb.universe.tf/loadBalancerIPs: "172.18.255.31"

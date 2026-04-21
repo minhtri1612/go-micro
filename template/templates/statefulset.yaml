@@ -1,4 +1,5 @@
-{{- if eq (default "Deployment" .Values.workload.kind) "StatefulSet" }}
+{{- if eq (.Values.workloadKind | default "deployment" | lower) "statefulset" }}
+{{- $p := .Values.persistence | default dict }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -6,112 +7,25 @@ metadata:
   labels:
     {{- include "template.labels" . | nindent 4 }}
 spec:
-  serviceName: {{ include "template.fullname" . }}
+  serviceName: {{ include "template.fullname" . }}-hl
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "template.selectorLabels" . | nindent 6 }}
   template:
-    metadata:
-      {{- with .Values.podAnnotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      labels:
-        {{- include "template.labels" . | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
+    {{- include "template.workloadPodSpec" . | nindent 4 }}
+  {{- if ($p.enabled | default false) }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- with $p.storageClassName }}
+        storageClassName: {{ . | quote }}
         {{- end }}
-    spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      serviceAccountName: {{ include "template.serviceAccountName" . }}
-      {{- with .Values.podSecurityContext }}
-      securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      containers:
-        - name: {{ .Chart.Name }}
-          {{- $svcName := default "" .Values.currentService }}
-          {{- $hasDbSecret := false }}
-          {{- $secretName := "" }}
-          {{- if hasKey .Values $svcName }}
-            {{- $svcConfig := index .Values $svcName }}
-            {{- if and $svcConfig (hasKey $svcConfig "secrets") (hasKey $svcConfig.secrets "target") (hasKey $svcConfig.secrets.target "name") }}
-              {{- $hasDbSecret = true }}
-              {{- $secretName = $svcConfig.secrets.target.name }}
-            {{- end }}
-          {{- end }}
-          {{- $isDbBackedService := or (eq $svcName "product") (eq $svcName "inventory") (eq $svcName "order") (eq $svcName "payment") (eq $svcName "noti") }}
-          {{- $dbServiceName := printf "%s-db" $svcName }}
-          {{- if eq $svcName "noti" }}
-            {{- $dbServiceName = "notification-db" }}
-          {{- end }}
-          {{- $dbNamespace := printf "databases-%s" (default "dev" .Values.env) }}
-          {{- with .Values.securityContext }}
-          securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
-            - name: http
-              containerPort: {{ .Values.service.port }}
-              protocol: TCP
-          {{- with .Values.livenessProbe }}
-          livenessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.readinessProbe }}
-          readinessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.resources }}
-          resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- if or $isDbBackedService (kindIs "slice" .Values.containerEnv) }}
-          env:
-            {{- if $isDbBackedService }}
-            - name: DB_HOST
-              value: "{{ $dbServiceName }}.{{ $dbNamespace }}.svc.cluster.local"
-            - name: DB_PORT
-              value: "5432"
-            {{- end }}
-            {{- if kindIs "slice" .Values.containerEnv }}
-            {{- toYaml .Values.containerEnv | nindent 12 }}
-            {{- end }}
-          {{- end }}
-          {{- if or $hasDbSecret (kindIs "slice" .Values.containerEnvFrom) }}
-          envFrom:
-            {{- if $hasDbSecret }}
-            - secretRef:
-                name: "{{ $secretName }}"
-            {{- end }}
-            {{- if kindIs "slice" .Values.containerEnvFrom }}
-            {{- toYaml .Values.containerEnvFrom | nindent 12 }}
-            {{- end }}
-          {{- end }}
-          {{- with .Values.volumeMounts }}
-          volumeMounts:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-      {{- with .Values.volumes }}
-      volumes:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        resources:
+          requests:
+            storage: {{ $p.size | default "10Gi" | quote }}
+  {{- end }}
 {{- end }}

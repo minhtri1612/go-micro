@@ -1,7 +1,6 @@
 # Notification Database - Override values for template/values.yaml
 replicaCount: 1
-workload:
-  kind: StatefulSet
+workloadKind: statefulset
 
 image:
   repository: postgres

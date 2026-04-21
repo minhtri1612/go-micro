@@ -5,9 +5,8 @@
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
 
-# Select workload type for this release: Deployment or StatefulSet.
-workload:
-  kind: Deployment
+# deployment | statefulset | rollout (rollout uses Argo Rollouts when rollout.enabled)
+workloadKind: deployment
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
@@ -57,8 +56,11 @@ securityContext: {}
 service:
   # This sets the service type more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
   type: ClusterIP
+  annotations: {}
   # This sets the ports more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
   port: 80
+  targetPort: http
+  portName: http
 
 # This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
 ingress:
@@ -76,6 +78,76 @@ ingress:
   #  - secretName: chart-example-tls
   #    hosts:
   #      - chart-example.local
+
+routing:
+  provider: traefik
+
+traefik:
+  enabled: false
+  hostname: chart-example.local
+  entryPoints:
+    - web
+  stableWeight: 90
+  canaryWeight: 10
+  pathPrefix: /
+  # When empty, IngressRoute/TraefikService are not rendered. Set service names to enable (e.g. [api-gateway]).
+  ingressRouteForServices: []
+
+rollout:
+  enabled: false
+  strategy: canary
+  revisionHistoryLimit: 3
+  canary:
+    stableService: ""
+    canaryService: ""
+    maxSurge: 25%
+    maxUnavailable: 0
+    steps:
+      - setWeight: 20
+      - pause:
+          duration: 60s
+      - setWeight: 100
+  blueGreen:
+    activeService: ""
+    previewService: ""
+    autoPromotionEnabled: true
+    scaleDownDelaySeconds: 30
+  analysis:
+    enabled: false
+    templates: []
+    prometheusAddress: ""
+
+ciliumNetworkPolicy:
+  enabled: false
+  authenticationMode: ""
+  # When empty, policy applies to any workload. Otherwise only listed currentService values.
+  services: []
+  ingress:
+    fromEndpoints: []
+    http: []
+  egress:
+    toEndpoints: []
+    toEntities: []
+    port: ""
+    protocol: TCP
+    http: []
+
+podMonitor:
+  enabled: false
+  metricsPath: /metrics
+  interval: 30s
+
+runtimeConfig:
+  enabled: false
+  fileName: app.yaml
+  mountPath: /app/config
+  data: {}
+
+persistence:
+  enabled: false
+  size: 10Gi
+
+env: ""
 
 # -- Expose the service via gateway-api HTTPRoute
 # Requires Gateway API resources and suitable controller installed within the cluster
@@ -163,3 +235,7 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+extraEnv: []
+containerEnv: []
+containerEnvFrom: []
