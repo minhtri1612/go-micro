@@ -34,11 +34,6 @@ spec:
     canary:
       stableService: {{ $rolloutCfg.canary.stableService | default (include "template.fullname" .) }}
       canaryService: {{ $rolloutCfg.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .) ) }}
-      {{- if $.Values.traefik.enabled }}
-      trafficRouting:
-        traefik:
-          weightedTraefikServiceName: {{ printf "%s-weighted" (include "template.fullname" .) }}
-      {{- end }}
       {{- with $rolloutCfg.canary.maxSurge }}
       maxSurge: {{ . }}
       {{- end }}
