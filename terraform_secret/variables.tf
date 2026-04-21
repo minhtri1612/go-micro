@@ -19,6 +19,18 @@ variable "db_user" {
   default = "postgres"
 }
 
+variable "db_password" {
+  type        = string
+  default     = "canh177"
+  description = "Database password used by services and Postgres."
+}
+
+variable "stripe_secret_key" {
+  type        = string
+  default     = "sk_test_dummy_key_for_development"
+  description = "Stripe API secret key used by payment service."
+}
+
 variable "app_credentials_name_suffix_by_env" {
   type        = map(string)
   default     = {}

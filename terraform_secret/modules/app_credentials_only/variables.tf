@@ -11,8 +11,20 @@ variable "db_user" {
   default = "postgres"
 }
 
+variable "db_password" {
+  type        = string
+  description = "Database password injected to app credentials."
+  default     = "canh177"
+}
+
 variable "app_credentials_name_suffix" {
   type        = string
   default     = ""
   description = "Optional secret name suffix, e.g. -v2"
+}
+
+variable "stripe_secret_key" {
+  type        = string
+  description = "Stripe API secret key injected to payment service."
+  default     = "sk_test_dummy_key_for_development"
 }
