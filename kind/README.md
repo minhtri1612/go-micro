@@ -283,7 +283,7 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
 
    **Không bỏ bước này** dù bạn đã tạo secret **trên AWS Secrets Manager** (Terraform / console) từ trước:
 
-   - Secret **trên AWS** (`meo-stationery/dev/app-credentials` ...) chứa JSON app (`POSTGRES_*`, `DATABASE_URL`, ...) - đích mà **ExternalSecret** đồng bộ vào K8s.
+  - Secret **trên AWS** (`go-micro/dev/app-credentials`, `go-micro/staging/app-credentials`, `go-micro/prod/app-credentials`) chứa JSON app (`DB_USER`, `DB_PASSWORD`, `PRODUCT_DB_NAME`, `INVENTORY_DB_NAME`, `ORDER_DB_NAME`, `NOTIFICATION_DB_NAME`, `PAYMENT_DB_NAME`) - đích mà **ExternalSecret** đồng bộ vào K8s.
    - Secret **`aws-credentials` trong cluster** chứa **Access key IAM** để **controller ESO** gọi API AWS (`GetSecretValue`). Không có nó (hoặc không có auth tương đương), ESO không đọc được AWS.
 
    IAM cần `secretsmanager:GetSecretValue` trên prefix secret của project (giống user ESO trong `terraform_secret` hoặc `terraform/modules/iam`).
@@ -301,21 +301,20 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    done
    ```
 
-3. Tạo namespace đích (ESO ghi K8s Secret vào `database` + `meo-stationery`). Ví dụ cho **kind-dev** (đổi context cho staging/prod):
+3. Tạo namespace đích đúng của `go-micro`:
 
    ```bash
-   kubectl --context kind-dev create namespace database --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
-   kubectl --context kind-dev create namespace meo-stationery --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
-   kubectl --context kind-prod create namespace database --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
-   kubectl --context kind-prod create namespace meo-stationery --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
-   kubectl --context kind-staging create namespace database --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
-   kubectl --context kind-staging create namespace meo-stationery --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
+  for ctx in kind-dev kind-staging kind-prod; do
+    env=${ctx#kind-}
+    kubectl --context "$ctx" create namespace "databases-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
+    kubectl --context "$ctx" create namespace "microservices-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
+  done
    ```
 
 4. Apply `ClusterSecretStore` + `ExternalSecret` từ repo (từ thư mục gốc repo):
 
    ```bash
-   cd ~/Downloads/practice_RKE2   # hoặc /path/to/practice_RKE2
+  cd ~/Downloads/go-micro
 
     # DEV
     helm template external-secrets external-secrets/applications \
@@ -339,14 +338,34 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
       | kubectl --context kind-prod apply -f -
    ```
 
-5. Kiểm tra sync:
+5. Kiểm tra mapping ESO -> AWS Secret Manager trước khi sync app:
 
    ```bash
-   kubectl --context kind-dev get externalsecret,secret -n database
-   kubectl --context kind-dev get externalsecret,secret -n meo-stationery
+   # Verify AWS secret path từ file config của repo
+   rg "remoteKey:" config/env/dev.yaml config/env/staging.yaml config/env/prod.yaml
+   # expected:
+   # go-micro/dev/app-credentials
+   # go-micro/staging/app-credentials
+   # go-micro/prod/app-credentials
+
+   # Verify ExternalSecret đã render đúng remote key
+   kubectl --context kind-dev -n microservices-dev get externalsecret go-micro-inventory-secrets-dev -o yaml | rg "key:|property:"
    ```
 
-**Staging trên AWS:** Repo có `env-secrets/staging.yaml` trỏ tới `meo-stationery/staging/app-credentials`. Terraform trong repo **chưa** có `environments/staging` - bạn cần tạo secret đó trên AWS (console hoặc thêm module) trước khi ESO sync được.
+   Nếu `remoteKey` không đúng với secret bạn đã tạo trên AWS, sửa tại `config/env/*.yaml` rồi re-apply chart ESO.
+
+6. Kiểm tra sync:
+
+   ```bash
+  kubectl --context kind-dev get externalsecret,secret -n microservices-dev
+  kubectl --context kind-staging get externalsecret,secret -n microservices-staging
+  kubectl --context kind-prod get externalsecret,secret -n microservices-prod
+   ```
+
+**Lưu ý:** nếu `ExternalSecret` báo `SecretSyncedError`, kiểm tra lại:
+- `external-secrets/aws-credentials` trên cluster (đúng access key/secret key chưa)
+- secret path trên AWS có tồn tại đúng tên `go-micro/<env>/app-credentials` chưa
+- JSON trong secret AWS có đủ các property được map trong `config/env/*.yaml` chưa
 
 ---
 
