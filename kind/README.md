@@ -2,7 +2,7 @@
 
 Luồng **chính** trong tài liệu này: xoá / tạo lại 4 cluster (management + dev + staging + prod), Helm Cilium trên management, Argo CD, đăng ký cluster workload, secrets, bootstrap GitOps, Cilium CNI + Traefik trên dev–staging–prod.
 
-**Chạy lệnh từ thư mục gốc repo** (`cd ~/Downloads/go-micro`). Argo CD chỉ trên **kind-management**. API từ máy host: management `127.0.0.1:33443`, dev `30443`, staging `32443`, prod `31443`.
+**Chạy lệnh từ thư mục gốc repo** (`cd ~/Downloads/go-micro` hoặc path tương đương). Argo CD chỉ trên **kind-management**. API từ máy host: management `127.0.0.1:33443`, dev `30443`, staging `32443`, prod `31443`.
 
 ---
 
@@ -10,7 +10,7 @@ Luồng **chính** trong tài liệu này: xoá / tạo lại 4 cluster (managem
 
 Kind là môi trường **ephemeral** để test. Sau khi tắt/bật máy lại **không có lệnh "start lại nguyên cụm" đơn giản**. Cách an toàn, ít lỗi nhất:
 
-> **Xóa cụm cũ (nếu còn) → tạo lại Kind (management + Helm Cilium → dev/staging/prod) → Argo CD → đăng ký cluster → secrets (1.5.1 ESO hoặc 1.5.2 kubectl) → bootstrap Argo → sync app.**
+> **Xóa cụm cũ (nếu còn) → tạo lại Kind (management + Helm Cilium → dev/staging/prod) → Argo CD → đăng ký cluster → secrets (1.6.1 ESO hoặc 1.6.2 kubectl) → bootstrap Argo → sync app.**
 
 Giả sử đang ở branch `kind` của repo này.
 
@@ -43,7 +43,7 @@ helm repo update
 # Bootstrap file tắt 2 thứ chưa có lúc này:
 # 1) ServiceMonitor CRD (chưa cài Prometheus Operator) → Helm lỗi "no matches for kind ServiceMonitor"
 # 2) LoadBalancer → NodePort (chưa cài MetalLB → Helm --wait treo chờ EXTERNAL-IP mãi không có)
-# Sau khi Argo sync monitoring + cilium-management, Git sẽ chuyển lại cấu hình đầy đủ.
+# Sau khi Argo sync monitoring + metallb-management + cilium-management, Git sẽ chuyển lại LoadBalancer.
 helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
   --version 1.19.2 \
   -f cilium/cilium-values-management.yaml \
@@ -102,7 +102,7 @@ Trên `kind-dev`, `kind-staging` và `kind-prod`:
 
 ```bash
 kubectl --context kind-dev  apply -f kind/dev-argocd-manager.yaml
-kubectl --context kind-staging apply -f kind/dev-argocd-manager.yaml
+kubectl --context kind-staging apply -f kind/staging-argocd-manager.yaml
 kubectl --context kind-prod apply -f kind/prod-argocd-manager.yaml
 sleep 5
 
@@ -139,164 +139,7 @@ kubectl create secret generic cluster-prod -n argocd \
 kubectl label secret cluster-prod -n argocd argocd.argoproj.io/secret-type=cluster
 ```
 
-### 1.5. Secrets cho database + backend (sau khi recreate cluster)
-
-#### 1.5.1. External Secrets Operator + AWS Secrets Manager (thay cho “ESO giả”)
-
-Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Secrets Manager (cùng keys như Terraform `modules/secrets`: `POSTGRES_*`, `DATABASE_URL`, `NEXTAUTH_SECRET`).
-
-**Trên từng workload cluster** (`kind-dev`, `kind-staging`, `kind-prod`) — lặp lại với đúng `--context` và file values tương ứng:
-
-1. Cài External Secrets Operator (**một lần trên mỗi** cluster `kind-dev`, `kind-staging`, `kind-prod`):
-
-   Config Kind của repo dùng **Kubernetes 1.28** (`kindest/node:v1.28.0`). Chart ESO **≥ 0.20.1** kèm CRD có `selectableFields` (chỉ hợp lệ từ K8s ~1.31+) → `helm install` báo lỗi kiểu `.spec.versions[0].selectableFields: field not declared in schema` và **CRD không được cài** → apply `ExternalSecret` sẽ lỗi `no matches for kind "ExternalSecret"`.
-
-   **Cách xử lý:** ghim chart **0.19.2** (bản 0.20.1 trở lên cần K8s mới hơn). Nếu lần trước cài hỏng: `helm uninstall external-secrets -n external-secrets` trên context tương ứng, rồi cài lại.
-
-   ```bash
-   helm repo add external-secrets https://charts.external-secrets.io
-   helm repo update
-
-   for ctx in kind-dev kind-staging kind-prod; do
-     helm upgrade --install external-secrets external-secrets/external-secrets \
-       --version 0.19.2 \
-       -n external-secrets --create-namespace \
-       --kube-context "$ctx"
-   done
-   ```
-
-   **Sau `helm install`, bắt buộc chờ pod ESO (webhook) Ready** rồi mới apply `ClusterSecretStore` / `ExternalSecret`. Nếu apply quá sớm, API server gọi validating webhook `external-secrets-webhook` trong khi pod chưa listen → lỗi `connection refused` / `Internal error occurred: failed calling webhook`.
-
-   ```bash
-   for ctx in kind-dev kind-staging kind-prod; do
-     kubectl --context "$ctx" -n external-secrets rollout status deployment/external-secrets-webhook --timeout=300s
-     kubectl --context "$ctx" -n external-secrets wait --for=condition=Ready pods --all --timeout=300s
-   done
-   ```
-
-   (Nếu tên deployment webhook khác: `kubectl --context kind-dev -n external-secrets get deploy`.)
-
-   (Muốn dùng ESO mới nhất: nâng image Kind lên **≥ 1.31** trong `kind/*-kind-config.yaml` rồi bỏ `--version`.)
-
-2. Tạo `aws-credentials` trong namespace `external-secrets` **trên từng cluster**
-
-   **Không bỏ bước này** dù bạn đã tạo secret **trên AWS Secrets Manager** (Terraform / console) từ trước:
-
-   - Secret **trên AWS** (ví dụ `go-micro/dev/app-credentials`) chứa JSON app (`POSTGRES_*`, `DATABASE_URL`, …) — đích mà **ExternalSecret** đồng bộ vào K8s.
-   - Secret **`aws-credentials` trong cluster** chứa **Access key IAM** để **controller ESO** gọi API AWS (`GetSecretValue`). Không có nó (hoặc không có auth tương đương), ESO không đọc được AWS.
-
-   IAM cần `secretsmanager:GetSecretValue` trên prefix secret của project (giống user ESO trong `terraform_secret` hoặc `terraform/modules/iam`).
-
-   ```bash
-   kubectl --context kind-dev -n external-secrets create secret generic aws-credentials \
-     --from-literal=access-key-id='YOUR_AWS_ACCESS_KEY_ID' \
-     --from-literal=secret-access-key='YOUR_AWS_SECRET_ACCESS_KEY'
-   # Lặp với kind-staging / kind-prod (thường cùng một cặp key). Nếu secret đã tồn tại: thêm --dry-run=client -o yaml | kubectl apply -f - hoặc delete rồi create lại.
-   ```
-
-3. Tạo namespace đích (ESO ghi K8s Secret vào `databases-<env>` + `microservices-<env>`). Ví dụ cho **kind-dev** (đổi context cho staging/prod):
-
-   ```bash
-   kubectl --context kind-dev create namespace databases-dev --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
-   kubectl --context kind-dev create namespace microservices-dev --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
-   kubectl --context kind-prod create namespace databases-prod --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
-   kubectl --context kind-prod create namespace microservices-prod --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
-   kubectl --context kind-staging create namespace databases-staging --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
-   kubectl --context kind-staging create namespace microservices-staging --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
-   ```
-
-4. Apply `ClusterSecretStore` + `ExternalSecret` từ repo (từ thư mục gốc repo):
-
-   ```bash
-   cd ~/Downloads/go-micro
-
-    # DEV
-    helm template external-secrets external-secrets/applications \
-      -f external-secrets/applications/values.yaml \
-      -f config/base/config.yaml \
-      -f config/env/dev.yaml \
-      | kubectl --context kind-dev apply -f -
-
-    # STAGING
-    helm template external-secrets external-secrets/applications \
-      -f external-secrets/applications/values.yaml \
-      -f config/base/config.yaml \
-      -f config/env/staging.yaml \
-      | kubectl --context kind-staging apply -f -
-
-    # PROD
-    helm template external-secrets external-secrets/applications \
-      -f external-secrets/applications/values.yaml \
-      -f config/base/config.yaml \
-      -f config/env/prod.yaml \
-      | kubectl --context kind-prod apply -f -
-   ```
-
-5. Kiểm tra sync:
-
-   ```bash
-   kubectl --context kind-dev get externalsecret,secret -n databases-dev
-   kubectl --context kind-dev get externalsecret,secret -n microservices-dev
-   ```
-
-**Staging trên AWS:** đảm bảo secret key cho staging tồn tại trên AWS (ví dụ `go-micro/staging/app-credentials`) trước khi ESO sync.
-
-#### 1.5.2. Secret tĩnh bằng kubectl (không AWS — “giả ESO”)
-
-Khi không dùng ESO/AWS, tạo Secret thủ công trên từng cluster. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên (`| kubectl --context kind-dev apply -f -`), nếu không namespace sẽ bị tạo nhầm cluster.
-
-**Trên `kind-dev`:**
-
-```bash
-# DB
-kubectl --context kind-dev create namespace database --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
-kubectl --context kind-dev -n databases-dev create secret generic go-micro-database-secrets-dev \
-  --from-literal=POSTGRES_USER=meo_admin \
-  --from-literal=POSTGRES_DB=meo_stationery \
-  --from-literal=POSTGRES_PASSWORD=localdev
-
-# Backend
-kubectl --context kind-dev create namespace microservices-dev --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
-kubectl --context kind-dev -n microservices-dev create secret generic go-micro-backend-secrets-dev \
-  --from-literal=DATABASE_URL='postgresql://meo_admin:localdev@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
-  --from-literal=NEXTAUTH_SECRET='kind-dev-nextauth'
-```
-
-**Trên `kind-staging`:**
-
-```bash
-# DB
-kubectl --context kind-staging create namespace database --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
-kubectl --context kind-staging -n databases-staging create secret generic go-micro-database-secrets-staging \
-  --from-literal=POSTGRES_USER=meo_admin \
-  --from-literal=POSTGRES_DB=meo_stationery \
-  --from-literal=POSTGRES_PASSWORD=localstaging
-
-# Backend
-kubectl --context kind-staging create namespace microservices-staging --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
-kubectl --context kind-staging -n microservices-staging create secret generic go-micro-backend-secrets-staging \
-  --from-literal=DATABASE_URL='postgresql://meo_admin:localstaging@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
-  --from-literal=NEXTAUTH_SECRET='kind-staging-nextauth'
-```
-
-**Trên `kind-prod`:** (**phải** có `--context kind-prod` ở cả hai bên pipe):
-
-```bash
-# DB
-kubectl --context kind-prod create namespace database --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
-kubectl --context kind-prod -n databases-prod create secret generic go-micro-database-secrets-prod \
-  --from-literal=POSTGRES_USER=meo_admin \
-  --from-literal=POSTGRES_DB=meo_stationery \
-  --from-literal=POSTGRES_PASSWORD=localprod
-
-# Backend
-kubectl --context kind-prod create namespace microservices-prod --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
-kubectl --context kind-prod -n microservices-prod create secret generic go-micro-backend-secrets-prod \
-  --from-literal=DATABASE_URL='postgresql://meo_admin:localprod@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
-  --from-literal=NEXTAUTH_SECRET='kind-prod-nextauth'
-```
-
-### 1.6. Apply lại bootstrap Argo CD
+### 1.5. Apply lại bootstrap Argo CD
 
 Bootstrap là các file Application; apply lần lượt:
 
@@ -310,7 +153,7 @@ argocd repo add https://metallb.github.io/metallb --type helm --name metallb
 argocd repo add https://helm.cilium.io/ --type helm --name cilium
 argocd repo add https://helm.traefik.io/traefik --type helm --name traefik
 
-# 1. App stack go-micro
+# 1. App go-micro
 kubectl apply -f argocd/bootstrap/01-projects.yaml
 # Bắt buộc: Application này render ra AppProject dev/staging/prod. Nếu chưa sync mà đã `argocd app sync` app khác → InvalidSpecError: project does not exist.
 argocd app sync argocd/argocd-projects
@@ -325,7 +168,7 @@ kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
 kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
 kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
 
-# Monitoring: sau mỗi lần recreate Kind — remote_write → xem mục 1.6.1 bên dưới (đừng bỏ qua).
+# Monitoring: sau mỗi lần recreate Kind — remote_write → xem mục 1.5.1 bên dưới (đừng bỏ qua).
 
 # 2b. Argo Rollouts (backend dùng Rollout / AnalysisTemplate)
 kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
@@ -337,9 +180,12 @@ kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
 kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
 kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
 
-# 4. MetalLB
-# Repo go-micro hiện chưa có bootstrap metallb-*.yaml trong argocd/bootstrap.
-# Nếu cần LB trên Kind, apply tài nguyên dưới config/metallb/ theo môi trường bạn đang chạy.
+# 4. MetalLB (LoadBalancer Kind — cả 4 cluster, bao gồm management cho clustermesh-apiserver LB)
+kubectl apply -f argocd/bootstrap/01-projects.yaml
+kubectl apply -f argocd/bootstrap/15-metallb-dev.yaml
+kubectl apply -f argocd/bootstrap/16-metallb-staging.yaml
+kubectl apply -f argocd/bootstrap/17-metallb-prod.yaml
+kubectl apply -f argocd/bootstrap/18-metallb-management.yaml
 
 # 5. Traefik (Helm chart upstream; Service LoadBalancer — cần MetalLB đã sync)
 kubectl apply -f argocd/bootstrap/19-traefik-dev.yaml
@@ -349,7 +195,7 @@ kubectl apply -f argocd/bootstrap/21-traefik-prod.yaml
 
 Sau đó (từ máy đã `argocd login`): `argocd app sync argocd/traefik-dev` và `traefik-staging`; với **prod** nếu AppProject/sync policy là **Manual** thì sync `traefik-prod` tay. Chi tiết kiểm tra CRD / curl: **mục 1.7**.
 
-#### 1.6.1. Monitoring `remote_write` — script `scripts/sync-monitoring-remote-write-url.sh` (**bắt buộc đọc sau recreate Kind**)
+#### 1.5.1. Monitoring `remote_write` — script `scripts/sync-monitoring-remote-write-url.sh` (**bắt buộc đọc sau recreate Kind**)
 
 Prometheus trên **management** nhận series từ **Prometheus Agent** trên dev/staging/prod qua `remote_write`. URL ghi trong `monitoring/monitoring-workload.yaml` (`prometheus.prometheusSpec.remoteWrite[0].url`) phải là:
 
@@ -363,10 +209,18 @@ Prometheus trên **management** nhận series từ **Prometheus Agent** trên de
 
 1. Trên Argo: app **`monitoring-management` (bootstrap 05)** phải **Healthy** (Prometheus management + NodePort **32090**). Cùng lúc có thể cần chỉnh `cilium/clustermesh-management-peer.yaml` (`bash scripts/kind-clustermesh-peer-ip.sh` rồi commit/push) nếu dùng ClusterMesh từ Git.
 
+   Nếu `kubectl --context kind-management -n monitoring ...` báo `no matching resources found`, nghĩa là app monitoring management chưa được apply/sync. Chạy:
+
+   ```bash
+   kubectl --context kind-management apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
+   sleep 3
+   argocd app sync argocd/monitoring-management
+   ```
+
 2. Vào **thư mục gốc repo** (nơi có `monitoring/`, `scripts/`):
 
 ```bash
-cd ~/Downloads/go-micro
+cd ~/Downloads/go-micro   # đổi đúng path máy bạn
 ```
 
 3. **Quyền thực thi script** (lần đầu hoặc nếu gặp `permission denied`):
@@ -394,7 +248,7 @@ chmod +x scripts/sync-monitoring-remote-write-url.sh
 ./scripts/sync-monitoring-remote-write-url.sh --check
 ```
 
-6. **Đẩy lên Git** (bắt buộc nếu Argo trỏ remote `go-micro` / `main`) — chọn **một** trong hai cách:
+6. **Đẩy lên Git** (bắt buộc nếu Argo trỏ remote như bootstrap `go-micro` / `main`) — chọn **một** trong hai cách:
 
    **Cách A — một lệnh (sau bước 5; script **ghi lại** file rồi `git add` → `commit` chỉ khi có diff → `push`):**
 
@@ -461,17 +315,16 @@ argocd app sync argocd/monitoring-prod
 Sau khi sync xong, sẽ có:
 
 - `argocd-projects` → tạo AppProject dev, staging, prod
-- `dev-microservices` → render `argocd/manifest-apps` và sinh app dạng `dev-go-microservices-*-app`
-- `staging-microservices` → sinh app dạng `staging-go-microservices-*-app`
-- `prod-microservices` → sinh app dạng `prod-go-microservices-*-app`
+- `dev-microservices` → render `argocd/manifest-apps` → sinh ra `dev-microservices-backend-app`, `dev-microservices-database-app`, `dev-microservices-frontend-app` (chart `template` + `app/*.yaml` + `env/` + `config/`)
+- `staging-microservices` → sinh ra `staging-microservices-backend-app`, `staging-microservices-database-app`, `staging-microservices-redis-app` (nếu `env/staging.yaml` khai báo `redis`)
+- `prod-microservices` → sinh ra `prod-microservices-backend-app`, `prod-microservices-database-app`
 
 Với môi trường **prod** (sync policy `Manual`), force sync thủ công:
 
 ```bash
 argocd app sync argocd/prod-microservices
-# rồi sync từng app con cần thiết, ví dụ:
-argocd app sync argocd/prod-go-microservices-payment-app
-argocd app sync argocd/prod-go-microservices-payment-db-app
+argocd app sync argocd/prod-microservices-backend-app
+argocd app sync argocd/prod-microservices-database-app
 ```
 
 > **Lưu ý:** Nếu ArgoCD CLI báo `permission denied`, login lại trước:
@@ -482,6 +335,167 @@ argocd app sync argocd/prod-go-microservices-payment-db-app
 > ```
 
 ---
+
+
+### 1.6. Secrets cho database + backend (sau khi recreate cluster)
+
+#### 1.6.1. External Secrets Operator + AWS Secrets Manager (thay cho “ESO giả”)
+
+Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Secrets Manager (cùng keys như Terraform `modules/secrets`: `POSTGRES_*`, `DATABASE_URL`, `NEXTAUTH_SECRET`).
+
+> **Quan trọng về thứ tự (go-micro):** làm xong mục `1.4` thì **chạy mục `1.6` trước** (ít nhất `argocd-projects` + `monitoring-dev/staging/prod` + `cilium-dev/staging/prod`) để workload cluster có CRD `ServiceMonitor` và node chuyển `Ready`.  
+> Nếu cài ESO ngay tại đây khi node còn `NotReady`, `external-secrets-webhook` sẽ `0/1 available` và timeout như log bạn đang gặp.
+
+**Trên từng workload cluster** (`kind-dev`, `kind-staging`, `kind-prod`) — lặp lại với đúng `--context` và file values tương ứng:
+
+1. Cài External Secrets Operator (**một lần trên mỗi** cluster `kind-dev`, `kind-staging`, `kind-prod`):
+
+   Config Kind của repo dùng **Kubernetes 1.28** (`kindest/node:v1.28.0`). Chart ESO **≥ 0.20.1** kèm CRD có `selectableFields` (chỉ hợp lệ từ K8s ~1.31+) → `helm install` báo lỗi kiểu `.spec.versions[0].selectableFields: field not declared in schema` và **CRD không được cài** → apply `ExternalSecret` sẽ lỗi `no matches for kind "ExternalSecret"`.
+
+   **Cách xử lý:** ghim chart **0.19.2** (bản 0.20.1 trở lên cần K8s mới hơn). Nếu lần trước cài hỏng: `helm uninstall external-secrets -n external-secrets` trên context tương ứng, rồi cài lại.
+
+   ```bash
+   helm repo add external-secrets https://charts.external-secrets.io
+   helm repo update
+
+   for ctx in kind-dev kind-staging kind-prod; do
+     helm upgrade --install external-secrets external-secrets/external-secrets \
+       --version 0.19.2 \
+       -n external-secrets --create-namespace \
+       --kube-context "$ctx"
+   done
+   ```
+
+   **Sau `helm install`, bắt buộc chờ pod ESO (webhook) Ready** rồi mới apply `ClusterSecretStore` / `ExternalSecret`. Nếu apply quá sớm, API server gọi validating webhook `external-secrets-webhook` trong khi pod chưa listen → lỗi `connection refused` / `Internal error occurred: failed calling webhook`.
+
+   ```bash
+   for ctx in kind-dev kind-staging kind-prod; do
+     kubectl --context "$ctx" -n external-secrets rollout status deployment/external-secrets-webhook --timeout=300s
+     kubectl --context "$ctx" -n external-secrets wait --for=condition=Ready pods --all --timeout=300s
+   done
+   ```
+
+   (Nếu tên deployment webhook khác: `kubectl --context kind-dev -n external-secrets get deploy`.)
+
+   (Muốn dùng ESO mới nhất: nâng image Kind lên **≥ 1.31** trong `kind/*-kind-config.yaml` rồi bỏ `--version`.)
+
+2. Tạo `aws-credentials` trong namespace `external-secrets` **trên từng cluster**
+
+   **Không bỏ bước này** dù bạn đã tạo secret **trên AWS Secrets Manager** (Terraform / console) từ trước:
+
+   - Secret **trên AWS** (`go-micro/dev/app-credentials` …) chứa JSON app (`POSTGRES_*`, `DATABASE_URL`, …) — đích mà **ExternalSecret** đồng bộ vào K8s.
+   - Secret **`aws-credentials` trong cluster** chứa **Access key IAM** để **controller ESO** gọi API AWS (`GetSecretValue`). Không có nó (hoặc không có auth tương đương), ESO không đọc được AWS.
+
+   IAM cần `secretsmanager:GetSecretValue` trên prefix secret của project (giống user ESO trong `terraform_secret` hoặc `terraform/modules/iam`).
+
+   ```bash
+   kubectl --context kind-dev -n external-secrets create secret generic aws-credentials \
+     --from-literal=access-key-id='YOUR_AWS_ACCESS_KEY_ID' \
+     --from-literal=secret-access-key='YOUR_AWS_SECRET_ACCESS_KEY'
+   # Lặp với kind-staging / kind-prod (thường cùng một cặp key). Nếu secret đã tồn tại: thêm --dry-run=client -o yaml | kubectl apply -f - hoặc delete rồi create lại.
+   ```
+
+3. Tạo namespace đích (ESO ghi K8s Secret vào `databases-<env>` + `microservices-<env>`). Ví dụ cho **kind-dev** (đổi context cho staging/prod):
+
+   ```bash
+   kubectl --context kind-dev create namespace databases-dev --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
+   kubectl --context kind-dev create namespace microservices-dev --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
+   kubectl --context kind-prod create namespace databases-prod --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
+   kubectl --context kind-prod create namespace microservices-prod --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
+   kubectl --context kind-staging create namespace databases-staging --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
+   kubectl --context kind-staging create namespace microservices-staging --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
+   ```
+
+4. Apply `ClusterSecretStore` + `ExternalSecret` từ repo (từ thư mục gốc repo):
+
+   ```bash
+   cd ~/Downloads/go-micro
+
+    # DEV
+    helm template external-secrets external-secrets/applications \
+      -f external-secrets/applications/values.yaml \
+      -f config/base/config.yaml \
+      -f config/env/dev.yaml \
+      | kubectl --context kind-dev apply -f -
+
+    # STAGING
+    helm template external-secrets external-secrets/applications \
+      -f external-secrets/applications/values.yaml \
+      -f config/base/config.yaml \
+      -f config/env/staging.yaml \
+      | kubectl --context kind-staging apply -f -
+
+    # PROD
+    helm template external-secrets external-secrets/applications \
+      -f external-secrets/applications/values.yaml \
+      -f config/base/config.yaml \
+      -f config/env/prod.yaml \
+      | kubectl --context kind-prod apply -f -
+   ```
+
+5. Kiểm tra sync:
+
+   ```bash
+   kubectl --context kind-dev get externalsecret,secret -n database
+   kubectl --context kind-dev get externalsecret,secret -n microservices-dev
+   ```
+
+**Staging trên AWS:** Repo có `env-secrets/staging.yaml` trỏ tới `go-micro/staging/app-credentials`. Terraform trong repo **chưa** có `environments/staging` — bạn cần tạo secret đó trên AWS (console hoặc thêm module) trước khi ESO sync được.
+
+#### 1.6.2. Secret tĩnh bằng kubectl (không AWS — “giả ESO”)
+
+Khi không dùng ESO/AWS, tạo Secret thủ công trên từng cluster. **Lưu ý:** lệnh có pipe phải có `--context` ở cả hai bên (`| kubectl --context kind-dev apply -f -`), nếu không namespace sẽ bị tạo nhầm cluster.
+
+**Trên `kind-dev`:**
+
+```bash
+# DB
+kubectl --context kind-dev create namespace databases-dev --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
+kubectl --context kind-dev -n databases-dev create secret generic go-micro-database-secrets-dev \
+  --from-literal=POSTGRES_USER=meo_admin \
+  --from-literal=POSTGRES_DB=meo_stationery \
+  --from-literal=POSTGRES_PASSWORD=localdev
+
+# Backend
+kubectl --context kind-dev create namespace microservices-dev --dry-run=client -o yaml | kubectl --context kind-dev apply -f -
+kubectl --context kind-dev -n microservices-dev create secret generic go-micro-backend-secrets-dev \
+  --from-literal=DATABASE_URL='postgresql://meo_admin:localdev@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
+  --from-literal=NEXTAUTH_SECRET='kind-dev-nextauth'
+```
+
+**Trên `kind-staging`:**
+
+```bash
+# DB
+kubectl --context kind-staging create namespace databases-staging --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
+kubectl --context kind-staging -n databases-staging create secret generic go-micro-database-secrets-staging \
+  --from-literal=POSTGRES_USER=meo_admin \
+  --from-literal=POSTGRES_DB=meo_stationery \
+  --from-literal=POSTGRES_PASSWORD=localstaging
+
+# Backend
+kubectl --context kind-staging create namespace microservices-staging --dry-run=client -o yaml | kubectl --context kind-staging apply -f -
+kubectl --context kind-staging -n microservices-staging create secret generic go-micro-backend-secrets-staging \
+  --from-literal=DATABASE_URL='postgresql://meo_admin:localstaging@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
+  --from-literal=NEXTAUTH_SECRET='kind-staging-nextauth'
+```
+
+**Trên `kind-prod`:** (**phải** có `--context kind-prod` ở cả hai bên pipe):
+
+```bash
+# DB
+kubectl --context kind-prod create namespace databases-prod --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
+kubectl --context kind-prod -n databases-prod create secret generic go-micro-database-secrets-prod \
+  --from-literal=POSTGRES_USER=meo_admin \
+  --from-literal=POSTGRES_DB=meo_stationery \
+  --from-literal=POSTGRES_PASSWORD=localprod
+
+# Backend
+kubectl --context kind-prod create namespace microservices-prod --dry-run=client -o yaml | kubectl --context kind-prod apply -f -
+kubectl --context kind-prod -n microservices-prod create secret generic go-micro-backend-secrets-prod \
+  --from-literal=DATABASE_URL='postgresql://meo_admin:localprod@postgres.database.svc.cluster.local:5432/meo_stationery?schema=public' \
+  --from-literal=NEXTAUTH_SECRET='kind-prod-nextauth'
+```
 
 ### 1.7. Cài Traefik Ingress cho dev/staging/prod (traffic routing + Canary/Blue-Green)
 
@@ -531,7 +545,7 @@ for ctx in kind-dev kind-staging kind-prod; do
 done
 ```
 
-**Ghi chú:** Luồng repo **không** còn dùng `Gateway` / `HTTPRoute` (Gateway API) cho app `go-micro`. Bạn **không** cần `kubectl apply` `standard-install.yaml` của Gateway API cho lab này trừ khi bạn tự thêm workload khác dựa trên Gateway API.
+**Ghi chú:** Luồng repo **không** còn dùng `Gateway` / `HTTPRoute` (Gateway API) cho app go-micro. Bạn **không** cần `kubectl apply` `standard-install.yaml` của Gateway API cho lab này trừ khi bạn tự thêm workload khác dựa trên Gateway API.
 
 #### 1.7.2. Cài Cilium bằng Argo CD (GitOps chuẩn)
 
@@ -572,8 +586,11 @@ kubectl --context kind-prod -n kube-system rollout restart deploy/cilium-operato
 3. Apply + sync:
 
    ```bash
-   # go-micro chưa có bootstrap metallb-*.yaml ở argocd/bootstrap
-   # apply manifest trong config/metallb/ trước, sau đó mới sync traefik
+   kubectl --context kind-management apply -f argocd/bootstrap/15-metallb-dev.yaml
+   kubectl --context kind-management apply -f argocd/bootstrap/16-metallb-staging.yaml
+   kubectl --context kind-management apply -f argocd/bootstrap/17-metallb-prod.yaml
+   kubectl --context kind-management apply -f argocd/bootstrap/18-metallb-management.yaml
+   argocd app sync argocd/metallb-prod
    ```
 
 4. Pool IP nằm trong `config/metallb/pools/{dev,staging,prod,management}/pool.yaml` — **mỗi cluster một dải** (`172.18.255.10-19` dev, `20-29` staging, `30-39` prod, `40-49` management). Management dùng MetalLB để cấp IP tĩnh cho `clustermesh-apiserver` LB (`172.18.255.41`), tránh phụ thuộc Docker IP/NodePort. Nếu `docker network inspect kind` không phải `172.18.0.0/16`, sửa các file đó cho khớp subnet.
@@ -581,10 +598,10 @@ kubectl --context kind-prod -n kube-system rollout restart deploy/cilium-operato
 5. Sau khi MetalLB **Healthy**, Service Traefik (`kubectl -n traefik get svc traefik`) sẽ có **EXTERNAL-IP**. Gọi:
 
    ```bash
-   curl -sS -H 'Host: dev.meo.local' http://<EXTERNAL-IP>/api/health
+   curl -sS -H 'Host: dev.go-micro.local' http://<EXTERNAL-IP>/api/health
    ```
 
-   (`/etc/hosts`: `127.0.0.1 dev.meo.local` chỉ đúng khi bạn dùng NodePort/localhost; với IP MetalLB trên mạng Docker, thường **curl thẳng tới EXTERNAL-IP** là đủ.)
+   (`/etc/hosts`: `127.0.0.1 dev.go-micro.local` chỉ đúng khi bạn dùng NodePort/localhost; với IP MetalLB trên mạng Docker, thường **curl thẳng tới EXTERNAL-IP** là đủ.)
 
 Kiểm tra nhanh:
 
@@ -712,9 +729,9 @@ done
 # 3) (Tuỳ chọn) Tạo GET từ host qua Traefik (world -> backend)
 # Thay IP nếu pool MetalLB của bạn khác.
 for i in $(seq 1 80); do
-  curl -sS -H "Host: dev.meo.local" "http://172.18.255.10/api/health" >/dev/null || true
-  curl -sS -H "Host: staging.meo.local" "http://172.18.255.20/api/health" >/dev/null || true
-  curl -sS -H "Host: prod.meo.local" "http://172.18.255.30/api/health" >/dev/null || true
+  curl -sS -H "Host: dev.go-micro.local" "http://172.18.255.10/api/health" >/dev/null || true
+  curl -sS -H "Host: staging.go-micro.local" "http://172.18.255.20/api/health" >/dev/null || true
+  curl -sS -H "Host: go-micro.local" "http://172.18.255.30/api/health" >/dev/null || true
   sleep 0.2
 done
 ```
@@ -761,11 +778,11 @@ done
 
 - `kubectl --context kind-dev -n traefik describe pod -l app.kubernetes.io/name=traefik` — thường gặp khi **chưa có MetalLB**, pool sai, hoặc thiếu quyền trên node.
 - `kubectl --context kind-dev -n traefik get svc traefik -o wide` — cột **EXTERNAL-IP** phải khớp dải pool (ví dụ dev `172.18.255.10-19`).
-- Sau khi có IP: `curl -sS -H 'Host: dev.meo.local' http://<EXTERNAL-IP>/api/health` (hostname theo `config/env/dev.yaml` / `traefik.hostname`).
+- Sau khi có IP: `curl -sS -H 'Host: dev.go-micro.local' http://<EXTERNAL-IP>/api/health` (hostname theo `config/env/dev.yaml` / `traefik.hostname`).
 
 **1.8.2.** (Phụ lục) Cilium **Gateway API** — `Gateway` / `HTTPRoute` treo **Progressing** trên Kind
 
-Repo hiện tại **không** sync `Gateway` / `HTTPRoute` cho stack `go-micro`; mục này chỉ để tham chiếu nếu bạn tự thêm workload Gateway API.
+Repo hiện tại **không** sync `Gateway` / `HTTPRoute` cho stack go-micro; mục này chỉ để tham chiếu nếu bạn tự thêm workload Gateway API.
 
 - Argo CD health cho Gateway API thường cần *Programmed=True* / parent *Accepted*; trên Kind, Cilium Gateway đôi khi không đạt đủ điều kiện → resource treo **Progressing** dù **Rollout** đã **Healthy**.
 - Triệu chứng: `kubectl get gateway meo-gw` *Waiting for controller*; không có Service **`cilium-gateway-*`**; `kubectl get gatewayclass cilium` ACCEPTED **Unknown**.
@@ -787,15 +804,15 @@ Repo hiện tại **không** sync `Gateway` / `HTTPRoute` cho stack `go-micro`; 
 
 **Pod `ContainerCreating` + `configmap "backend-config" not found`**
 
-- Chart `template` chỉ tạo ConfigMap khi **có** `runtimeConfig.enabled` **và** `runtimeConfig.data` (xem `template/templates/configmap.yaml`). Nếu trên cluster vẫn không thấy ConfigMap, gần như chắc **Argo đang sync revision Git cũ** (bootstrap trỏ `https://github.com/minhtri1612/go-micro.git` `main` — phải **push** đúng repo/branch đó). Sau khi push: Refresh + Sync app trên Argo.
+- Chart `template` chỉ tạo ConfigMap khi **có** `runtimeConfig.enabled` **và** `runtimeConfig.data` (xem `template/templates/configmap.yaml`). `app/*.yaml` / `app/*.yaml` trong repo này đã có `data` — nếu trên cluster vẫn không thấy ConfigMap, gần như chắc **Argo đang sync revision Git cũ** (bootstrap trỏ `https://github.com/minhtri1612/go-micro.git` `main` — phải **push** đúng repo/branch đó). Sau khi push: Refresh + Sync app trên Argo.
 - Từ bản chart đã cập nhật: Deployment/StatefulSet **chỉ mount** volume `app-config` khi có `runtimeConfig.data` (khớp điều kiện tạo ConfigMap) — tránh pod kẹt vĩnh viễn khi Git chưa có `data` (pod có thể lên nhưng thiếu file config cho tới khi bạn sync đúng Git).
 
 **DATABASE_URL hostname `postgres` vs service name `database`**
 
-- AWS Secrets Manager (và mục 1.5.2 static secrets) lưu `DATABASE_URL` với hostname **`postgres.database.svc.cluster.local`**.
+- AWS Secrets Manager (và mục 1.6.2 static secrets) lưu `DATABASE_URL` với hostname **`postgres.database.svc.cluster.local`**.
 - Nhưng ArgoCD template set `fullnameOverride: database` → K8s service tên **`database`**, không phải `postgres`.
 - **Fix đã có trong Git:** `config/base/config.yaml` khai báo `database.service.aliases: [postgres]`, template `service-alias.yaml` tự tạo ExternalName service `postgres` → `database.database.svc.cluster.local`. ArgoCD quản lý, không mất khi recreate Kind.
-- Nếu vẫn lỗi DNS `NXDOMAIN` cho `postgres.database.svc...`: sync lại database app (`argocd app sync argocd/*-go-microservices-*-db-app`).
+- Nếu vẫn lỗi DNS `NXDOMAIN` cho service DB: sync lại database app (`argocd app sync argocd/*-go-microservices-*-db-app`).
 
 **ExternalSecret database `SecretSyncedError`**
 
@@ -805,11 +822,11 @@ Repo hiện tại **không** sync `Gateway` / `HTTPRoute` cho stack `go-micro`; 
 
 - CiliumNetworkPolicy L7 HTTP rules route tất cả traffic qua Envoy proxy. Trên Kind single-node, Envoy bị overload → kubelet health probe timeout → liveness kill container → CrashLoopBackOff.
 - **Fix:** `ciliumNetworkPolicy.enabled: false` trong `config/env/{dev,staging,prod}.yaml` khi chạy trên Kind. Bật lại trên cluster multi-node / RKE2.
-- Probe config nên có `initialDelaySeconds` và `timeoutSeconds` >= 5s (xem `app/be.yaml`).
+- Probe config nên có `initialDelaySeconds` và `timeoutSeconds` >= 5s (xem `app/*.yaml`).
 
 **Grafana không thấy (hoặc thiếu) metrics từ cluster dev/staging/prod**
 
-- Xem **mục 1.6.1**: sau recreate Kind, URL `remote_write` trong Git thường **sai**. Chạy `./scripts/sync-monitoring-remote-write-url.sh`, commit/push, sync lại `monitoring-{dev,staging,prod}`. Kiểm `./scripts/sync-monitoring-remote-write-url.sh --check`.
+- Xem **mục 1.5.1**: sau recreate Kind, URL `remote_write` trong Git thường **sai**. Chạy `./scripts/sync-monitoring-remote-write-url.sh`, commit/push, sync lại `monitoring-{dev,staging,prod}`. Kiểm `./scripts/sync-monitoring-remote-write-url.sh --check`.
 - Thứ tự: `monitoring-management` (05) phải **Healthy** trước khi kỳ vọng agent push. Pod trên workload cluster **không** nhất thiết `curl` được tới IP management (mạng Kind tách cluster) — đừng dùng `kubectl run curl` trên dev để kết luận Prometheus management chết; test từ **host** hoặc `--check` như trên.
 
 **ServiceAccount “exists and cannot be imported into the current release”**
@@ -820,7 +837,7 @@ Repo hiện tại **không** sync `Gateway` / `HTTPRoute` cho stack `go-micro`; 
 
 ## 2. Kiểm tra nhanh
 
-- Remote write (sau recreate Kind): `./scripts/sync-monitoring-remote-write-url.sh --check` — xem **1.6.1**.
+- Remote write (sau recreate Kind): `./scripts/sync-monitoring-remote-write-url.sh --check` — xem **1.5.1**.
 - ClusterMesh: `bash scripts/kind-clustermesh-status.sh` (hoặc `cilium clustermesh status --context kind-management`). Mô hình hiện tại: **tất cả 4 cluster** đều chạy `clustermesh-apiserver` kiểu `LoadBalancer` với IP tĩnh MetalLB, tránh phụ thuộc Docker IP/NodePort sau recreate Kind:
   - management: `172.18.255.41:2379`
   - dev: `172.18.255.11:2379`
@@ -868,10 +885,10 @@ Repo hiện tại **không** sync `Gateway` / `HTTPRoute` cho stack `go-micro`; 
 
 ## 3. Lưu ý
 
-- Replica count / image tag trong `env/<env>.yaml`. Chart workload `template/`; profile `app/be.yaml`, `app/db.yaml`; config `config/base/config.yaml`, override `config/env/<env>.yaml`.
+- Replica count / image tag trong `env/<env>.yaml`. Chart workload `template/`; profile `app/*.yaml`, `app/*.yaml`; config `config/base/config.yaml`, override `config/env/<env>.yaml`.
 - **Traefik + canary:** Bootstrap **`argocd/bootstrap/19–21-traefik-*.yaml`** (sau MetalLB). App values: `routing.provider: traefik`, `traefik.enabled`, hostname theo env. Argo Rollouts cần plugin trong `argocd/argo-rollouts-values.yaml` — **mục 1.7**, gỡ rối **1.8.1**.
 - **Kind API / TLS:** `bash scripts/kind-fix-kubeconfig-servers.sh` sau `kind create`. Trên **management**, **trước** `helm install cilium` — nếu Helm lỗi TLS thì không có CNI (`disableDefaultCNI`) và Argo CD **Pending**.
-- **Helm Cilium bootstrap:** Lần đầu trên management **chưa** có kube-prometheus-stack và MetalLB → **bắt buộc** dùng thêm file `cilium-values-management-bootstrap.yaml` (mục **1.2**). File này tắt ServiceMonitor (chưa có CRD) và override `clustermesh.apiserver.service.type` về `NodePort` (chưa có MetalLB → Helm `--wait` sẽ treo chờ EXTERNAL-IP mãi). Sau khi Argo sync monitoring + cilium-management, ArgoCD sẽ chuyển lại cấu hình đầy đủ.
+- **Helm Cilium bootstrap:** Lần đầu trên management **chưa** có kube-prometheus-stack và MetalLB → **bắt buộc** dùng thêm file `cilium-values-management-bootstrap.yaml` (mục **1.2**). File này tắt ServiceMonitor (chưa có CRD) và override `clustermesh.apiserver.service.type` về `NodePort` (chưa có MetalLB → Helm `--wait` sẽ treo chờ EXTERNAL-IP mãi). Sau khi Argo sync monitoring + metallb-management + cilium-management, ArgoCD sẽ chuyển lại `LoadBalancer` + MetalLB IP tĩnh.
 - **Hubble UI / CLI:** Management → port-forward **12000**. Workload → NodePort **31201 / 31202 / 31203** (IP `docker inspect *-control-plane`). CLI flow: `cilium hubble port-forward` + **`hubble observe flows`** — **mục 1.7.4**.
 - **ClusterMesh:** Tất cả 4 cluster đều dùng `clustermesh-apiserver` kiểu **LoadBalancer** với IP tĩnh MetalLB (`management: 172.18.255.41`, `dev: .11`, `staging: .21`, `prod: .31`), **không phụ thuộc Docker IP/NodePort** — khi recreate Kind, IP Docker đổi nhưng IP MetalLB giữ nguyên.
   - **Hub** (management): khai báo endpoint spoke trong `cilium-values-management.yaml` → `clustermesh.config.clusters` (dev/staging/prod: `172.18.255.11/21/31:2379`).
@@ -879,8 +896,8 @@ Repo hiện tại **không** sync `Gateway` / `HTTPRoute` cho stack `go-micro`; 
   - Hub/spoke cần **cùng** cấu hình encryption (`cilium/cilium-values.yaml`).
   - **CA bundle cross-cluster:** Mỗi cluster có CA riêng. ClusterMesh cần tất cả CA được bundle trong `clustermesh-apiserver-remote-cert` và `clustermesh-apiserver-server-cert` trên **mỗi** cluster. Script `./scripts/kind-clustermesh-sync-spoke-from-hub.sh` xử lý việc này. **Sau mỗi lần recreate Kind** (CA mới được sinh), **phải** chạy lại script sync CA.
   - Nếu pool MetalLB đổi/subnet đổi mà chưa cập nhật values, KVStoreMesh sẽ báo `connection refused`. Sau khi sửa values: sync `cilium-management` → chạy `./scripts/kind-clustermesh-sync-spoke-from-hub.sh` → sync `cilium-{dev,staging,prod}` → kiểm bằng `cilium clustermesh status`.
-- **Monitoring remote_write:** Sau mỗi lần recreate Kind, chạy `./scripts/sync-monitoring-remote-write-url.sh` rồi commit/push và sync agent — chi tiết **1.6.1**. Management không còn scrape tĩnh node-exporter/kube-state từ các workload cluster; nếu bỏ bước này, Grafana thiếu series theo `cluster`/`environment`.
+- **Monitoring remote_write:** Sau mỗi lần recreate Kind, chạy `./scripts/sync-monitoring-remote-write-url.sh` rồi commit/push và sync agent — chi tiết **1.5.1**. Management không còn scrape tĩnh node-exporter/kube-state từ các workload cluster; nếu bỏ bước này, Grafana thiếu series theo `cluster`/`environment`.
 - **Linux:** Argo CD → API dev/staging/prod dùng **container IP + 6443** (mục **1.4**). `docker inspect <cluster>-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'`. Không dùng `host.docker.internal` trên Linux.
 - Đổi port trong `kind/*-kind-config.yaml` thì cập nhật tương ứng mục **1.4** và `scripts/kind-fix-kubeconfig-servers.sh` nếu cần.
 - **RAM:** Nhiều cụm Kind song song dễ thiếu bộ nhớ → **kind/README.md**.
-- **Database/backend:** ESO+AWS (**mục 1.5.1**) hoặc Secret tĩnh (**mục 1.5.2**). Lệnh có pipe: `--context` ở **cả hai** phía.
+- **Database/backend:** ESO+AWS (**mục 1.6.1**) hoặc Secret tĩnh (**mục 1.6.2**). Lệnh có pipe: `--context` ở **cả hai** phía.
