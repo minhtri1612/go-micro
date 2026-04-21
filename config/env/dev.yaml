@@ -1,6 +1,42 @@
 env: dev
 projectName: go-micro
 
+routing:
+  provider: traefik
+
+traefik:
+  enabled: true
+  hostname: dev.go-micro.local
+  stableWeight: 90
+  canaryWeight: 10
+
+ciliumNetworkPolicy:
+  enabled: false
+  authenticationMode: ""
+
+rollout:
+  enabled: false
+  analysis:
+    enabled: false
+    prometheusAddress: http://172.18.0.3:32090
+  strategy: canary
+  canary:
+    steps:
+      - setWeight: 20
+      - analysis:
+          templates:
+            - templateName: '{{ include "template.fullname" . }}-success-rate'
+          args:
+            - name: service-name
+              value: '{{ include "template.fullname" . }}'
+      - setWeight: 50
+      - setWeight: 100
+  blueGreen:
+    activeService: ""
+    previewService: ""
+    autoPromotionEnabled: true
+    scaleDownDelaySeconds: 30
+
 product:
   namespace: microservices-dev
   secrets:

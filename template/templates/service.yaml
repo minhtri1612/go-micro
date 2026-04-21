@@ -3,7 +3,11 @@
 {{- if ne (.Values.workloadKind | default "deployment" | lower) "statefulset" }}
 {{- $cur := .Values.currentService | default "" }}
 {{- $svc := (index .Values $cur) | default dict }}
+{{- $backend := .Values.backend | default dict }}
 {{- $rolloutCfg := deepCopy (.Values.rollout | default dict) }}
+{{- if and (not (hasSuffix "-db" $cur)) (hasKey $backend "rollout") }}
+{{- $rolloutCfg = mergeOverwrite $rolloutCfg ($backend.rollout | default dict) }}
+{{- end }}
 {{- if hasKey $svc "rollout" }}
 {{- $rolloutCfg = mergeOverwrite $rolloutCfg ($svc.rollout | default dict) }}
 {{- end }}

@@ -1,14 +1,13 @@
 env: prod
 
 backend:
-  image:
-    tag: "api-gateway-v1.0.1"
   version: "v1.0.1"
   replicaCount: 3
+  rollout:
+    enabled: true
+    strategy: bluegreen
 
 database:
-  image:
-    tag: "15-alpine"
   version: "15-alpine"
   replicaCount: 1
 
@@ -17,36 +16,57 @@ api-gateway:
   image:
     tag: "api-gateway-v1.0.1"
   replicaCount: 3
+  rollout:
+    enabled: true
+    strategy: bluegreen
 
 product:
   image:
     tag: "product-service-v1.0.1"
   replicaCount: 3
+  rollout:
+    enabled: true
+    strategy: bluegreen
 
 inventory:
   image:
     tag: "inventory-service-v1.0.1"
   replicaCount: 3
+  rollout:
+    enabled: true
+    strategy: bluegreen
 
 order:
   image:
     tag: "order-service-v1.0.1"
   replicaCount: 5
+  rollout:
+    enabled: true
+    strategy: bluegreen
 
 payment:
   image:
     tag: "payment-service-v1.0.1"
   replicaCount: 5
+  rollout:
+    enabled: true
+    strategy: bluegreen
 
 noti:
   image:
     tag: "notification-service-v1.0.1"
   replicaCount: 3
+  rollout:
+    enabled: true
+    strategy: bluegreen
 
 client:
   image:
     tag: "client-v1.0.1"
   replicaCount: 3
+  rollout:
+    enabled: true
+    strategy: bluegreen
 
 # Database services
 product-db:
