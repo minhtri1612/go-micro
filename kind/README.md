@@ -64,6 +64,8 @@ If you hit TLS or `0.0.0.0` endpoint issues, run `kubectl config set-cluster ...
 kubectl config use-context kind-management
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl --context kind-management apply -f argocd/bootstrap/00-argocd-cm-health.yaml
+kubectl --context kind-management -n argocd rollout restart statefulset/argocd-application-controller deployment/argocd-repo-server
 kubectl -n argocd wait --for=condition=Ready pods --all --timeout=300s
 ```
 
