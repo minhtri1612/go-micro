@@ -8,7 +8,7 @@ import (
 	"go-microservices/inventory-service/routes"
 
 	"github.com/gin-gonic/gin"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/penglongli/gin-metrics/ginmetrics"
 )
 
 func main() {
@@ -25,8 +25,13 @@ func main() {
 	// Initialize router
 	router := gin.Default()
 
-	// Add prometheus metrics endpoint
-	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	// HTTP metrics middleware
+	m := ginmetrics.GetMonitor()
+	m.SetMetricPath("/metrics")
+	m.SetSlowTime(2)
+	m.SetDuration([]float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5})
+	m.Use(router)
+
 
 	// Setup routes
 	routes.SetupRoutes(router, inventoryController)

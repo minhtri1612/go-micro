@@ -9,6 +9,7 @@ traefik:
   hostname: dev.go-micro.local
   stableWeight: 90
   canaryWeight: 10
+  darkLaunch: true   # QA/Dev dùng header X-Canary: true để test canary trực tiếp
 
 ciliumNetworkPolicy:
   enabled: false
@@ -20,6 +21,84 @@ rollout:
     enabled: true
     prometheusAddress: http://172.18.0.3:32090
     templates:
+      # Gate 1: Smoke Test - Job curl health endpoint, fail fast if 5xx
+      - name: smoke-test
+        args:
+          - name: service-name
+        metrics:
+          - name: health-check
+            count: 1
+            failureLimit: 0
+            provider:
+              job:
+                spec:
+                  backoffLimit: 0
+                  template:
+                    spec:
+                      restartPolicy: Never
+                      containers:
+                        - name: smoke
+                          image: curlimages/curl:8.5.0
+                          command:
+                            - sh
+                            - -c
+                            - |
+                              set -e
+                              SVC="{{ "{{" }}args.service-name{{ "}}" }}"
+                              echo "=== Smoke Test: $SVC ==="
+                              STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://$SVC/health 2>/dev/null || echo "000")
+                              if [ "$STATUS" = "000" ]; then
+                                echo "FAILED: Cannot reach $SVC"
+                                exit 1
+                              fi
+                              if [ "$STATUS" -ge 500 ]; then
+                                echo "FAILED: $SVC returned HTTP $STATUS"
+                                exit 1
+                              fi
+                              echo "PASSED: $SVC returned HTTP $STATUS"
+
+      # Gate 2: Synthetic Load - bắn 50 request để warm-up + tạo data Prometheus
+      # Dev: 50 req x 0.3s = ~15 giây, chấp nhận < 10% error
+      - name: synthetic-load
+        args:
+          - name: service-name
+        metrics:
+          - name: load-test
+            count: 1
+            failureLimit: 0
+            provider:
+              job:
+                spec:
+                  backoffLimit: 0
+                  template:
+                    spec:
+                      restartPolicy: Never
+                      containers:
+                        - name: synthetic
+                          image: curlimages/curl:8.5.0
+                          command:
+                            - sh
+                            - -c
+                            - |
+                              SVC="{{ "{{" }}args.service-name{{ "}}" }}"
+                              ERRORS=0; TOTAL=50
+                              echo "=== Synthetic Load: $SVC (${TOTAL} requests) ==="
+                              for i in $(seq 1 $TOTAL); do
+                                STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+                                  http://$SVC/health 2>/dev/null || echo "000")
+                                if [ "$STATUS" -ge 500 ] || [ "$STATUS" = "000" ]; then
+                                  ERRORS=$((ERRORS + 1))
+                                fi
+                                sleep 0.3
+                              done
+                              echo "Result: $ERRORS/$TOTAL errors"
+                              if [ "$ERRORS" -gt 5 ]; then
+                                echo "FAILED: error rate $(( ERRORS * 100 / TOTAL ))% > 10%"
+                                exit 1
+                              fi
+                              echo "PASSED: synthetic load completed"
+
+      # Gate 3: Success Rate - HTTP error rate thật từ gin-metrics
       - name: success-rate
         args:
           - name: service-name
@@ -35,17 +114,42 @@ rollout:
               prometheus:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.3:32090" }}'
                 query: |
-                  avg(up{namespace="{{ .Release.Namespace }}",pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}) or vector(0)
+                  (
+                    1 - (
+                      sum(rate(gin_uri_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*",code=~"5.."}[2m])) or vector(0)
+                      /
+                      (sum(rate(gin_uri_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[2m])) or vector(1))
+                    )
+                  ) or vector(1)
   strategy: canary
   canary:
     steps:
+      # Wave 1: 5% - Smoke test nhanh, fail ngay nếu service không start được
+      - setWeight: 5
+      - analysis:
+          templates:
+            - templateName: '{{ include "template.fullname" . }}-smoke-test'
+          args:
+            - name: service-name
+              value: '{{ include "template.fullname" . }}'
+      # Wave 2: Synthetic load - warm up + tạo Prometheus data
+      - analysis:
+          templates:
+            - templateName: '{{ include "template.fullname" . }}-synthetic-load'
+          args:
+            - name: service-name
+              value: '{{ include "template.fullname" . }}'
+      # Wave 3: 20% - Mở rộng, chờ traffic thật rồi check Prometheus
       - setWeight: 20
+      - pause:
+          duration: 3m
       - analysis:
           templates:
             - templateName: '{{ include "template.fullname" . }}-success-rate'
           args:
             - name: service-name
               value: '{{ include "template.fullname" . }}'
+      # Wave 4: Promote
       - setWeight: 50
       - setWeight: 100
   blueGreen:

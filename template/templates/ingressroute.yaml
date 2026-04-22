@@ -45,4 +45,28 @@ spec:
         - name: {{ $rolloutCfg.blueGreen.previewService | default (printf "%s-preview" $fullName) }}
           port: {{ $svcPort }}
 {{- end }}
+{{- if and $rolloutEnabled (eq $strategy "canary") (.Values.traefik.darkLaunch | default false) }}
+---
+# Dark Launch: request có header X-Canary: true → đi thẳng vào canary pod
+# Dùng để QA/Dev test canary trước khi mở traffic thật
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $fullName }}-dark
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+  annotations:
+    # Header: X-Canary: true
+    usage: "dark-launch-qa-only"
+spec:
+  entryPoints:
+    {{- toYaml .Values.traefik.entryPoints | nindent 4 }}
+  routes:
+    - match: Host(`{{ .Values.traefik.hostname }}`) && PathPrefix(`{{ .Values.traefik.pathPrefix | default "/" }}`) && HeaderRegexp(`X-Canary`, `true`)
+      kind: Rule
+      priority: 100
+      services:
+        - name: {{ $canarySvc }}
+          port: {{ $svcPort }}
+{{- end }}
 {{- end }}

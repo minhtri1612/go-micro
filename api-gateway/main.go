@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/penglongli/gin-metrics/ginmetrics"
 )
 
 // Service information structure
@@ -38,6 +38,13 @@ var services = []Service{
 func main() {
 	r := gin.Default()
 
+	// HTTP metrics middleware - track all proxy requests
+	m := ginmetrics.GetMonitor()
+	m.SetMetricPath("/metrics")
+	m.SetSlowTime(2)
+	m.SetDuration([]float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5})
+	m.Use(r)
+
 	// Serve static files from the client/dist directory (Vite build output)
 	clientDistPath := getEnv("CLIENT_DIST_PATH", "./client/dist")
 	r.Static("/assets", clientDistPath+"/assets")
@@ -65,9 +72,6 @@ func main() {
 			"status": "ok",
 		})
 	})
-
-	// Prometheus metrics endpoint
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// API routes - Gateway to microservices
 	// V1 API group
