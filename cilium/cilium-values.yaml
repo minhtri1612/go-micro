@@ -6,6 +6,10 @@ clustermesh:
   useAPIServer: true
   apiserver:
     replicas: 1
+    tls:
+      server:
+        extraDnsNames:
+          - "*.mesh.cilium.io"
 
 # L7 qua Envoy: cần cho HTTP/DNS chi tiết trên flow khi traffic đi qua proxy L7 (Gateway/L7 policy).
 l7Proxy: true
