@@ -5,4 +5,4 @@ clustermesh:
       - name: management
         port: 2379
         ips:
-          - 172.18.0.2
+          - 172.18.255.41
