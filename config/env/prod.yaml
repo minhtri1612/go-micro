@@ -15,7 +15,7 @@ ciliumNetworkPolicy:
   authenticationMode: ""
 
 rollout:
-  enabled: false
+  enabled: true
   analysis:
     enabled: true
     prometheusAddress: http://172.18.0.3:32090
