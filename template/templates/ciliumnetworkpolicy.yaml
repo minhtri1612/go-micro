@@ -1,6 +1,6 @@
 {{- $cs := .Values.currentService | default "" }}
 {{- $f := .Values.ciliumNetworkPolicy.services | default list }}
-{{- $allow := or (eq (len $f) 0) (has $f $cs) }}
+{{- $allow := or (eq (len $f) 0) (has $cs $f) }}
 {{- if and .Values.ciliumNetworkPolicy.enabled (ne (.Values.workloadKind | default "deployment" | lower) "statefulset") $allow }}
 {{- $fromEps := .Values.ciliumNetworkPolicy.ingress.fromEndpoints | default list }}
 {{- $fromEntities := .Values.ciliumNetworkPolicy.ingress.fromEntities | default list }}

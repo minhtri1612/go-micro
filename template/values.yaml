@@ -111,6 +111,9 @@ rollout:
       - setWeight: 20
       - pause:
           duration: 60s
+      - setWeight: 50
+      - pause:
+          duration: 120s
       - setWeight: 100
   blueGreen:
     activeService: ""
@@ -120,6 +123,8 @@ rollout:
   analysis:
     enabled: false
     templates: []
+    # Prometheus base URL for AnalysisTemplate instant queries
+    # (override per env in config/env/*.yaml or app/be.yaml)
     prometheusAddress: ""
 
 ciliumNetworkPolicy:
@@ -147,6 +152,10 @@ runtimeConfig:
   fileName: app.yaml
   mountPath: /app/config
   data: {}
+
+# Toggle to use K8s Secret refs (typically synced by External Secrets Operator).
+# Keep true for cluster deploys; set false for local/no-secret test renders.
+useExternalSecrets: true
 
 persistence:
   enabled: false

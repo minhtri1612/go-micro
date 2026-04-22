@@ -1,6 +1,6 @@
 {{- $cs := .Values.currentService | default "" }}
 {{- $f := .Values.traefik.ingressRouteForServices | default list }}
-{{- $allow := or (eq (len $f) 0) (has $f $cs) }}
+{{- $allow := or (eq (len $f) 0) (has $cs $f) }}
 {{- if and .Values.traefik.enabled (eq (.Values.routing.provider | default "traefik" | lower) "traefik") (ne (.Values.workloadKind | default "deployment" | lower) "statefulset") $allow }}
 {{- $fullName := include "template.fullname" . }}
 {{- $svcPort := .Values.service.port }}
