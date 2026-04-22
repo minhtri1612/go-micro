@@ -73,4 +73,8 @@ spec:
       kind: TraefikService
       jqPathExpressions:
         - .status
+    - group: networking.k8s.io
+      kind: Ingress
+      jqPathExpressions:
+        - .status
 {{- end }}

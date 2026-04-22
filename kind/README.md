@@ -64,6 +64,7 @@ Terminal khác:
 rm -rf ~/.argocd
 PASS=$(kubectl --context kind-management -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 argocd login localhost:8080 --insecure --grpc-web --username admin --password "$PASS"
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
 # verify
 argocd --grpc-web account get-user-info
 ```
@@ -301,15 +302,39 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    done
    ```
 
-3. Tạo namespace đích đúng của `go-micro`:
+   **Khuyen nghi (tranh nhap tay sai key): dong bo tu Terraform state**
 
    ```bash
-  for ctx in kind-dev kind-staging kind-prod; do
-    env=${ctx#kind-}
-    kubectl --context "$ctx" create namespace "databases-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
-    kubectl --context "$ctx" create namespace "microservices-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
-  done
+   cd ~/Downloads/go-micro/terraform_secret
+   TF_AKID="$(terraform output -raw eso_access_key_id)"
+   TF_SAK="$(terraform output -raw eso_secret_access_key)"
+
+   for ctx in kind-dev kind-staging kind-prod; do
+     kubectl --context "$ctx" -n external-secrets create secret generic aws-credentials \
+       --from-literal=access-key-id="$TF_AKID" \
+       --from-literal=secret-access-key="$TF_SAK" \
+       --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
+   done
    ```
+
+   Force ESO reconcile ngay sau khi update credential:
+
+   ```bash
+   for ctx in kind-dev kind-staging kind-prod; do
+     ns="microservices-${ctx#kind-}"
+     kubectl --context "$ctx" -n "$ns" annotate externalsecret --all force-sync="$(date +%s)" --overwrite
+   done
+   ```
+
+3. Tạo namespace đích đúng của `go-micro`:
+
+```bash
+for ctx in kind-dev kind-staging kind-prod; do
+  env=${ctx#kind-}
+  kubectl --context "$ctx" create namespace "databases-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
+  kubectl --context "$ctx" create namespace "microservices-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
+done
+```
 
 4. Apply `ClusterSecretStore` + `ExternalSecret` từ repo (từ thư mục gốc repo):
 
@@ -356,11 +381,11 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
 
 6. Kiểm tra sync:
 
-   ```bash
-  kubectl --context kind-dev get externalsecret,secret -n microservices-dev
-  kubectl --context kind-staging get externalsecret,secret -n microservices-staging
-  kubectl --context kind-prod get externalsecret,secret -n microservices-prod
-   ```
+```bash
+kubectl --context kind-dev get externalsecret,secret -n microservices-dev
+kubectl --context kind-staging get externalsecret,secret -n microservices-staging
+kubectl --context kind-prod get externalsecret,secret -n microservices-prod
+```
 
 **Lưu ý:** nếu `ExternalSecret` báo `SecretSyncedError`, kiểm tra lại:
 - `external-secrets/aws-credentials` trên cluster (đúng access key/secret key chưa)
