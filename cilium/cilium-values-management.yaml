@@ -36,20 +36,20 @@ clustermesh:
     # cilium-clustermesh (+ cilium-kvstoremesh) trên hub — không có thì `cilium clustermesh status`
     # luôn báo "No cluster connected" dù agent spoke đã nối etcd (CLI đọc secret để biết tên peer).
     # GitOps ClusterMesh: management phải trỏ tới endpoint clustermesh-apiserver thực của spoke.
-    # Các IP dưới là control-plane IP trên Docker network kind (NodePort 32379).
+    # Các IP dưới là LoadBalancer IP của spoke trên Docker network kind.
     clusters:
       - name: dev
         ips:
-          - 172.18.0.4
-        port: 32379
+          - 172.18.255.11
+        port: 2379
       - name: staging
         ips:
-          - 172.18.0.5
-        port: 32379
+          - 172.18.255.21
+        port: 2379
       - name: prod
         ips:
-          - 172.18.0.6
-        port: 32379
+          - 172.18.255.31
+        port: 2379
 
 bpf:
   events:

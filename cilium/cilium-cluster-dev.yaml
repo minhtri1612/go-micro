@@ -14,7 +14,8 @@ hubble:
 clustermesh:
   config:
     enabled: true
-    clusters:
-      - name: management
-        ips:
-          - "172.18.0.2"
+  apiserver:
+    service:
+      type: LoadBalancer
+      annotations:
+        metallb.universe.tf/loadBalancerIPs: "172.18.255.11"
