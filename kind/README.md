@@ -409,3 +409,73 @@ kubectl --context kind-dev -n external-secrets get pods
 kubectl --context kind-staging -n external-secrets get pods
 kubectl --context kind-prod -n external-secrets get pods
 ```
+
+---
+
+## 8) ClusterMesh runbook (bat buoc doc)
+
+### 8.1 Argo `Healthy` khong dong nghia ClusterMesh da noi
+
+- `argocd app list` chi cho thay app/state resource.
+- Kiem tra that bang:
+
+```bash
+for ctx in kind-management kind-dev kind-staging kind-prod; do
+  echo "=== $ctx ==="
+  cilium clustermesh status --context "$ctx"
+done
+```
+
+### 8.2 Tai sao "chay script roi" van sai?
+
+Trong repo `go-micro`, script ClusterMesh khong co san tu dau. Truoc day chi co:
+
+- `scripts/sync-monitoring-remote-write-url.sh`
+
+Nen neu ban chay mot file `.sh` khac (copy tu repo cu/terminal cu), no khong cap nhat day du theo state hien tai cua repo nay. Tu bay gio dung script cua repo nay:
+
+```bash
+chmod +x scripts/kind-clustermesh-peer-ip.sh scripts/kind-clustermesh-sync-spoke-from-hub.sh
+```
+
+### 8.3 Khi nao chi can `argocd app sync`?
+
+Chi can sync khi ban da sua Git va khong co cert drift:
+
+```bash
+argocd app sync cilium-management --grpc-web
+argocd app sync cilium-dev --grpc-web
+argocd app sync cilium-staging --grpc-web
+argocd app sync cilium-prod --grpc-web
+```
+
+### 8.4 Khi nao phai chay recovery script?
+
+Chay recovery neu thay dau hieu:
+
+- `KVStoreMesh ... 0/1 connected`
+- `x509: certificate signed by unknown authority`
+- Recreate cluster / doi IP LB / rotate cert
+
+```bash
+cd ~/Downloads/go-micro
+./scripts/kind-clustermesh-sync-spoke-from-hub.sh
+
+argocd app sync cilium-management --grpc-web
+argocd app sync cilium-dev --grpc-web
+argocd app sync cilium-staging --grpc-web
+argocd app sync cilium-prod --grpc-web
+```
+
+### 8.5 Secrets AWS sai co can ghi vao README khong?
+
+Co. Do la loi hay gap nhat lam ESO fail:
+
+- `ExternalSecret` ra `SecretSyncedError`
+- Pod app bi `CreateContainerConfigError` vi missing secret
+
+Da co runbook o muc `6.1` de:
+
+- lay key dung tu Terraform output
+- tao lai `external-secrets/aws-credentials`
+- force ESO reconcile
