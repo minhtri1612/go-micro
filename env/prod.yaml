@@ -1,16 +1,5 @@
 env: prod
 
-backend:
-  version: "v1.0.1"
-  replicaCount: 3
-  rollout:
-    enabled: true
-    strategy: bluegreen
-
-database:
-  version: "15-alpine"
-  replicaCount: 1
-
 # Service-specific overrides
 api-gateway:
   image:

@@ -1,16 +1,5 @@
 env: staging
 
-backend:
-  version: "v1.0.1"
-  replicaCount: 2
-  rollout:
-    enabled: true
-    strategy: canary
-
-database:
-  version: "15-alpine"
-  replicaCount: 1
-
 # Service-specific overrides
 api-gateway:
   image:
