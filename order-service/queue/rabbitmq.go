@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -52,212 +53,7 @@ func InitRabbitMQ() error {
 			conn.Close()
 		}
 		fmt.Printf("[RabbitMQ] Connection failed (attempt %d/%d): %v\n", i+1, maxRetries, err)
-		// Wait before retrying
-		// Use a short sleep to avoid long startup delays
-		// (import "time" at top if not present)
-		// time.Sleep(2 * time.Second)
-		// Use context for cancellation if needed
-		// For now, just sleep
-		// (add import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// To avoid import issues, use a simple sleep
-		// (add import "time" at top)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
-		// Actually sleep
-		// (import "time" if not present)
-		// time.Sleep(2 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 	return fmt.Errorf("failed to connect to RabbitMQ after %d attempts: %w", maxRetries, err)
 }
@@ -311,6 +107,9 @@ func DeclareQueue(config Config) error {
 
 // PublishMessage publishes a message to queue
 func PublishMessage(config Config, message interface{}) error {
+	if channel == nil {
+		return fmt.Errorf("RabbitMQ channel is not initialized")
+	}
 	body, err := json.Marshal(message)
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
