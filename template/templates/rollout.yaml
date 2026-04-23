@@ -31,9 +31,16 @@ spec:
       autoPromotionEnabled: {{ $rolloutCfg.blueGreen.autoPromotionEnabled | default true }}
       scaleDownDelaySeconds: {{ $rolloutCfg.blueGreen.scaleDownDelaySeconds | default 30 }}
     {{- else }}
+    {{- $stableSvc := $rolloutCfg.canary.stableService | default (include "template.fullname" .) }}
+    {{- $canarySvc := $rolloutCfg.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .)) }}
     canary:
-      stableService: {{ $rolloutCfg.canary.stableService | default (include "template.fullname" .) }}
-      canaryService: {{ $rolloutCfg.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .) ) }}
+      stableService: {{ $stableSvc }}
+      canaryService: {{ $canarySvc }}
+      trafficRouting:
+        traefik:
+          weightedServices:
+            - serviceName: {{ $stableSvc }}
+            - serviceName: {{ $canarySvc }}
       {{- with $rolloutCfg.canary.maxSurge }}
       maxSurge: {{ . }}
       {{- end }}
