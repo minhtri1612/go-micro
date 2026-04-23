@@ -11,6 +11,21 @@
 {{- end }}
 {{- $rolloutEnabled := $rolloutCfg.enabled | default false }}
 {{- $strategy := $rolloutCfg.strategy | default "canary" | lower }}
+{{- $stripPrefixes := .Values.traefik.stripPrefixes | default list }}
+
+{{- if gt (len $stripPrefixes) 0 }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $fullName }}-strip-api
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      {{- toYaml $stripPrefixes | nindent 6 }}
+{{- end }}
 
 {{- if $rolloutEnabled }}
 {{- if and (eq $strategy "canary") (.Values.traefik.darkLaunch | default false) }}

@@ -25,6 +25,11 @@ spec:
   routes:
     - match: Host(`{{ .Values.traefik.hostname }}`) && PathPrefix(`{{ .Values.traefik.pathPrefix | default "/" }}`)
       kind: Rule
+{{- $stripPrefixes := .Values.traefik.stripPrefixes | default list }}
+{{- if gt (len $stripPrefixes) 0 }}
+      middlewares:
+        - name: {{ $fullName }}-strip-api
+{{- end }}
       services:
         - name: {{ $fullName }}-weighted
           kind: TraefikService
@@ -43,6 +48,10 @@ spec:
     - match: Host(`{{ .Values.traefik.hostname }}`) && HeaderRegexp(`X-Preview`, `true`)
       kind: Rule
       middlewares:
+{{- $stripPrefixes := .Values.traefik.stripPrefixes | default list }}
+{{- if gt (len $stripPrefixes) 0 }}
+        - name: {{ $fullName }}-strip-api
+{{- end }}
         - name: {{ $fullName }}-preview-id
       services:
         - name: {{ $rolloutCfg.blueGreen.previewService | default (printf "%s-preview" $fullName) }}
@@ -69,6 +78,10 @@ spec:
       kind: Rule
       priority: 100
       middlewares:
+{{- $stripPrefixes := .Values.traefik.stripPrefixes | default list }}
+{{- if gt (len $stripPrefixes) 0 }}
+        - name: {{ $fullName }}-strip-api
+{{- end }}
         - name: {{ $fullName }}-canary-id
       services:
         - name: {{ $canarySvc }}

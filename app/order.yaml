@@ -58,6 +58,9 @@ routing:
 
 traefik:
   enabled: true
+  pathPrefix: /api/v1/orders
+  stripPrefixes:
+    - /api/v1
   ingressRouteForServices:
     - order
 

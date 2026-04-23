@@ -95,6 +95,7 @@ traefik:
   stableWeight: 90
   canaryWeight: 10
   pathPrefix: /
+  stripPrefixes: []
   # When empty, IngressRoute/TraefikService are not rendered. Set service names to enable (e.g. [api-gateway]).
   ingressRouteForServices: []
 

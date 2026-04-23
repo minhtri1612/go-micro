@@ -5,11 +5,7 @@ name: "go-microservices"
 # Services configuration with profiles and namespaces
 appsByEnv:
   # Backend Services
-  api-gateway:
-    profile: "api-gateway"
-    namespace: "microservices"
-    syncWave: "2"
-  
+
   product:
     profile: "product"
     namespace: "microservices"

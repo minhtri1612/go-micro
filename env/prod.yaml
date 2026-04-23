@@ -1,13 +1,6 @@
 env: prod
 
 # Service-specific overrides
-api-gateway:
-  image:
-    tag: "api-gateway-v1.0.1"
-  replicaCount: 3
-  rollout:
-    enabled: true
-    strategy: bluegreen
 
 product:
   image:

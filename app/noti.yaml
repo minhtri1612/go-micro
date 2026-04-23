@@ -58,6 +58,9 @@ routing:
 
 traefik:
   enabled: true
+  pathPrefix: /api/v1/notifications
+  stripPrefixes:
+    - /api/v1
   ingressRouteForServices:
     - noti
 
