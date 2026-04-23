@@ -50,15 +50,24 @@ app.kubernetes.io/instance: {{ .Values.nameOverride | default .Release.Name }}
 Image repository / tag for this release (values come from merged app/*.yaml).
 */}}
 {{- define "template.imageRepositoryCurrent" -}}
-{{- .Values.image.repository -}}
+{{- $svcName := .Values.currentService | default "" -}}
+{{- $svc := (index .Values $svcName) | default dict -}}
+{{- $i := $svc.image | default dict -}}
+{{- $i.repository | default .Values.image.repository -}}
 {{- end }}
 
 {{- define "template.imageTagCurrent" -}}
-{{- .Values.image.tag | default .Chart.AppVersion -}}
+{{- $svcName := .Values.currentService | default "" -}}
+{{- $svc := (index .Values $svcName) | default dict -}}
+{{- $i := $svc.image | default dict -}}
+{{- $i.tag | default .Values.image.tag | default .Chart.AppVersion -}}
 {{- end }}
 
 {{- define "template.appVersionCurrent" -}}
-{{- .Values.image.tag | default .Chart.AppVersion -}}
+{{- $svcName := .Values.currentService | default "" -}}
+{{- $svc := (index .Values $svcName) | default dict -}}
+{{- $i := $svc.image | default dict -}}
+{{- $i.tag | default .Values.image.tag | default .Chart.AppVersion -}}
 {{- end }}
 
 {{/*
