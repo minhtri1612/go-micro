@@ -136,7 +136,7 @@ kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
 argocd --grpc-web app sync monitoring-management
 argocd --grpc-web app wait monitoring-management --health --sync --timeout 900
 
-# workload monitoring (creates ServiceMonitor CRDs on each workload cluster)
+# workload monitoring
 kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
 kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
 kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
@@ -146,28 +146,21 @@ argocd --grpc-web app terminate-op monitoring-prod || true
 argocd --grpc-web app sync monitoring-dev
 argocd --grpc-web app sync monitoring-staging
 argocd --grpc-web app sync monitoring-prod
-argocd --grpc-web app wait monitoring-dev --health --sync --timeout 900
-argocd --grpc-web app wait monitoring-staging --health --sync --timeout 900
-argocd --grpc-web app wait monitoring-prod --health --sync --timeout 900
-
-# HARD GATE: phải có ServiceMonitor CRD trên cả 3 workload cluster trước khi sync cilium
-kubectl --context kind-dev get crd servicemonitors.monitoring.coreos.com
-kubectl --context kind-staging get crd servicemonitors.monitoring.coreos.com
-kubectl --context kind-prod get crd servicemonitors.monitoring.coreos.com
+# khong hard-gate monitoring Healthy truoc Cilium.
+# cilium-values*.yaml da bat trustCRDsExist=true + app dung ServerSideApply,
+# nen co the sync Cilium tiep ngay; ServiceMonitor se duoc retry khi CRD san sang.
 
 # cilium workload
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
 kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
 kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
+sleep 3
 argocd --grpc-web app terminate-op cilium-dev || true
 argocd --grpc-web app terminate-op cilium-staging || true
 argocd --grpc-web app terminate-op cilium-prod || true
 argocd --grpc-web app sync cilium-dev
 argocd --grpc-web app sync cilium-staging
 argocd --grpc-web app sync cilium-prod
-argocd --grpc-web app wait cilium-dev --health --sync --timeout 900
-argocd --grpc-web app wait cilium-staging --health --sync --timeout 900
-argocd --grpc-web app wait cilium-prod --health --sync --timeout 900
 
 # cilium management
 kubectl apply -f argocd/bootstrap/18-cilium-management.yaml
@@ -182,6 +175,20 @@ argocd --grpc-web app sync metallb-management
 argocd --grpc-web app sync metallb-dev
 argocd --grpc-web app sync metallb-staging
 argocd --grpc-web app sync metallb-prod
+argocd --grpc-web app wait metallb-management --health --sync --timeout 900
+argocd --grpc-web app wait metallb-dev --health --sync --timeout 900
+argocd --grpc-web app wait metallb-staging --health --sync --timeout 900
+argocd --grpc-web app wait metallb-prod --health --sync --timeout 900
+
+# sau khi MetalLB da cap EXTERNAL-IP cho clustermesh-apiserver, cho cilium on dinh
+argocd --grpc-web app sync cilium-management
+argocd --grpc-web app sync cilium-dev
+argocd --grpc-web app sync cilium-staging
+argocd --grpc-web app sync cilium-prod
+argocd --grpc-web app wait cilium-management --health --sync --timeout 900
+argocd --grpc-web app wait cilium-dev --health --sync --timeout 900
+argocd --grpc-web app wait cilium-staging --health --sync --timeout 900
+argocd --grpc-web app wait cilium-prod --health --sync --timeout 900
 
 # rollouts + traefik
 kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
@@ -208,13 +215,13 @@ argocd --grpc-web app sync prod-microservices
 
 ### 4.1 Recovery nếu Cilium fail vì ServiceMonitor CRD
 
-Nếu gặp lỗi `could not find monitoring.coreos.com/ServiceMonitor`, chạy patch tạm để unblock CNI:
+Binh thuong KHONG can patch tay. Neu gap loi hiem `could not find monitoring.coreos.com/ServiceMonitor`,
+co the patch tam de unblock CNI roi sync lai:
 
 ```bash
 kubectl --context kind-management -n argocd patch application cilium-dev --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
 kubectl --context kind-management -n argocd patch application cilium-staging --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
 kubectl --context kind-management -n argocd patch application cilium-prod --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
-
 argocd --grpc-web app sync cilium-dev
 argocd --grpc-web app sync cilium-staging
 argocd --grpc-web app sync cilium-prod
@@ -428,11 +435,8 @@ done
 
 ### 8.2 Tai sao "chay script roi" van sai?
 
-Trong repo `go-micro`, script ClusterMesh khong co san tu dau. Truoc day chi co:
-
-- `scripts/sync-monitoring-remote-write-url.sh`
-
-Nen neu ban chay mot file `.sh` khac (copy tu repo cu/terminal cu), no khong cap nhat day du theo state hien tai cua repo nay. Tu bay gio dung script cua repo nay:
+Thuong la do chay script khong dung bo cua repo hien tai, hoac chay script nhung khong sync lai ArgoCD theo thu tu.
+Voi `go-micro`, dung dung bo script sau:
 
 ```bash
 chmod +x scripts/kind-clustermesh-peer-ip.sh scripts/kind-clustermesh-sync-spoke-from-hub.sh
