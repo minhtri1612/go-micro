@@ -56,12 +56,13 @@ rollout:
                               fi
                               echo "PASSED: $SVC returned HTTP $STATUS"
 
-      # Gate 2: Synthetic Load - 200 req x 0.5s = ~100s, max 2% errors (prod strict)
+      # Gate 2: Synthetic Load - k6 warm-up + tạo data Prometheus
+      # Prod: 50 VUs x 60s, cực kỳ nghiêm ngặt max 2% error
       - name: synthetic-load
         args:
           - name: service-name
         metrics:
-          - name: load-test
+          - name: load-test-k6
             count: 1
             failureLimit: 0
             provider:
@@ -72,29 +73,28 @@ rollout:
                     spec:
                       restartPolicy: Never
                       containers:
-                        - name: synthetic
-                          image: curlimages/curl:8.5.0
-                          command:
-                            - sh
-                            - -c
+                        - name: k6
+                          image: grafana/k6:latest
+                          command: ["k6", "run", "-"]
+                          stdin: true
+                          stdinOnce: true
+                          args:
                             - |
-                              SVC="{{ "{{" }}args.service-name{{ "}}" }}"
-                              ERRORS=0; TOTAL=200
-                              echo "=== Synthetic Load: $SVC (${TOTAL} requests) ==="
-                              for i in $(seq 1 $TOTAL); do
-                                STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
-                                  http://$SVC/health 2>/dev/null || echo "000")
-                                if [ "$STATUS" -ge 500 ] || [ "$STATUS" = "000" ]; then
-                                  ERRORS=$((ERRORS + 1))
-                                fi
-                                sleep 0.5
-                              done
-                              echo "Result: $ERRORS/$TOTAL errors"
-                              if [ "$ERRORS" -gt 4 ]; then
-                                echo "FAILED: error rate $(( ERRORS * 100 / TOTAL ))% > 2%"
-                                exit 1
-                              fi
-                              echo "PASSED: synthetic load completed"
+                              import http from 'k6/http';
+                              import { check, sleep } from 'k6';
+                              export const options = {
+                                vus: 50,
+                                duration: '60s',
+                                thresholds: {
+                                  http_req_failed: ['rate<0.02'], // Error rate cực thấp < 2%
+                                },
+                              };
+                              export default function () {
+                                // Gọi vào service canary của Prod
+                                let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:{{ .Values.service.port }}/health');
+                                check(res, { 'status is 200': (r) => r.status === 200 });
+                                sleep(0.1); // Traffic dồn dập
+                              }
 
       # Gate 3: Success Rate - HTTP error rate thật (prod: ngưỡng 0.95)
       - name: success-rate
