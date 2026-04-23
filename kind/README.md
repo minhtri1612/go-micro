@@ -381,7 +381,7 @@ done
 
 4. Apply `ClusterSecretStore` + `ExternalSecret` từ repo (từ thư mục gốc repo):
 
-   ```bash
+```bash
   cd ~/Downloads/go-micro
 
     # DEV
@@ -404,7 +404,7 @@ done
       -f config/base/config.yaml \
       -f config/env/prod.yaml \
       | kubectl --context kind-prod apply -f -
-   ```
+```
 
 5. Kiểm tra mapping ESO -> AWS Secret Manager trước khi sync app:
 

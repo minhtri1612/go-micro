@@ -12,6 +12,7 @@
 {{- end }}
 {{- $rolloutEnabled := $rolloutCfg.enabled | default false }}
 {{- $strategy := $rolloutCfg.strategy | default "canary" | lower }}
+{{- $canarySvc := $rolloutCfg.canary.canaryService | default (printf "%s-canary" $fullName) }}
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
