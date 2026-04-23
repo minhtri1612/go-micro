@@ -30,6 +30,11 @@ kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
 
 helm repo add cilium https://helm.cilium.io 2>/dev/null || true
 helm repo update
+# Bắt buộc dùng cả 2 file: bootstrap override 2 thứ chưa có lúc này:
+# 1) ServiceMonitor CRD chưa có (Prometheus Operator chưa cài) → nếu không tắt, Helm lỗi "no matches for kind ServiceMonitor"
+# 2) clustermesh-apiserver service type NodePort thay vì LoadBalancer (MetalLB chưa cài) → nếu không override, Helm --wait treo chờ EXTERNAL-IP mãi
+# Sau khi Argo sync monitoring (05) + metallb-management (18) + cilium-management, ArgoCD tự dùng cilium-values-management.yaml (ServiceMonitor bật, LoadBalancer + MetalLB IP tĩnh).
+# → Đây là cách phòng ngừa deadlock bootstrap (node NotReady + monitoring Pending chờ nhau), không cần patch tay sau.
 helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
   --version 1.19.2 \
   -f cilium/cilium-values-management.yaml \
@@ -146,9 +151,10 @@ argocd --grpc-web app terminate-op monitoring-prod || true
 argocd --grpc-web app sync monitoring-dev
 argocd --grpc-web app sync monitoring-staging
 argocd --grpc-web app sync monitoring-prod
-# khong hard-gate monitoring Healthy truoc Cilium.
-# cilium-values*.yaml da bat trustCRDsExist=true + app dung ServerSideApply,
-# nen co the sync Cilium tiep ngay; ServiceMonitor se duoc retry khi CRD san sang.
+# Khong wait monitoring workload o day: monitoring-dev/staging/prod can node Ready (co CNI) moi
+# schedule duoc pod, nhung node chua Ready vi Cilium chua len. Day la deadlock co the xay ra.
+# Neu gap trieu chung node NotReady + monitoring Pending + cilium sync fail vi thieu ServiceMonitor CRD
+# → xem muc 4.1 / 4.2 de pha deadlock bang kubectl patch.
 
 # cilium workload
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
