@@ -38,9 +38,7 @@ spec:
       canaryService: {{ $canarySvc }}
       trafficRouting:
         traefik:
-          weightedServices:
-            - serviceName: {{ $stableSvc }}
-            - serviceName: {{ $canarySvc }}
+          weightedTraefikServiceName: {{ include "template.fullname" . }}-weighted
       {{- with $rolloutCfg.canary.maxSurge }}
       maxSurge: {{ . }}
       {{- end }}
