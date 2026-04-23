@@ -134,7 +134,7 @@ sleep 3
 # management monitoring first (CRDs baseline)
 kubectl apply -f argocd/bootstrap/05-monitoring-mgmt.yaml
 argocd --grpc-web app sync monitoring-management
-argocd --grpc-web app wait monitoring-management --health --sync --timeout 900
+argocd --grpc-web app wait monitoring-management --health --sync --timeout 300
 
 # workload monitoring
 kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
@@ -175,20 +175,20 @@ argocd --grpc-web app sync metallb-management
 argocd --grpc-web app sync metallb-dev
 argocd --grpc-web app sync metallb-staging
 argocd --grpc-web app sync metallb-prod
-argocd --grpc-web app wait metallb-management --health --sync --timeout 900
-argocd --grpc-web app wait metallb-dev --health --sync --timeout 900
-argocd --grpc-web app wait metallb-staging --health --sync --timeout 900
-argocd --grpc-web app wait metallb-prod --health --sync --timeout 900
+argocd --grpc-web app wait metallb-management --health --sync --timeout 300
+argocd --grpc-web app wait metallb-dev --health --sync --timeout 300
+argocd --grpc-web app wait metallb-staging --health --sync --timeout 300
+argocd --grpc-web app wait metallb-prod --health --sync --timeout 300
 
 # sau khi MetalLB da cap EXTERNAL-IP cho clustermesh-apiserver, cho cilium on dinh
 argocd --grpc-web app sync cilium-management
 argocd --grpc-web app sync cilium-dev
 argocd --grpc-web app sync cilium-staging
 argocd --grpc-web app sync cilium-prod
-argocd --grpc-web app wait cilium-management --health --sync --timeout 900
-argocd --grpc-web app wait cilium-dev --health --sync --timeout 900
-argocd --grpc-web app wait cilium-staging --health --sync --timeout 900
-argocd --grpc-web app wait cilium-prod --health --sync --timeout 900
+argocd --grpc-web app wait cilium-management --health --sync --timeout 300
+argocd --grpc-web app wait cilium-dev --health --sync --timeout 300
+argocd --grpc-web app wait cilium-staging --health --sync --timeout 300
+argocd --grpc-web app wait cilium-prod --health --sync --timeout 300
 
 # rollouts + traefik
 kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
@@ -225,6 +225,42 @@ kubectl --context kind-management -n argocd patch application cilium-prod --type
 argocd --grpc-web app sync cilium-dev
 argocd --grpc-web app sync cilium-staging
 argocd --grpc-web app sync cilium-prod
+```
+
+### 4.2 Recovery nhanh khi bi deadlock (node NotReady + monitoring Pending)
+
+Trieu chung thuong gap:
+
+- `kubectl --context kind-dev get nodes` -> `NotReady`
+- `kps-wl-admission-create-*` o `monitoring` bi `Pending`
+- `argocd app sync cilium-dev` fail voi loi thieu `ServiceMonitor` CRD
+
+Nguyen nhan:
+
+- Monitoring workload chua schedule duoc khi node chua co CNI
+- Cilium workload lai bi chan boi `ServiceMonitor` CRD chua co
+- Hai ben cho nhau -> deadlock bootstrap
+
+Lenh pha deadlock (copy/chay):
+
+```bash
+# Patch tam tren 3 app Cilium workload de tat ServiceMonitor
+kubectl --context kind-management -n argocd patch application cilium-dev --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
+kubectl --context kind-management -n argocd patch application cilium-staging --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
+kubectl --context kind-management -n argocd patch application cilium-prod --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
+
+# Sync Cilium truoc de node len Ready
+argocd --grpc-web app sync cilium-dev
+argocd --grpc-web app sync cilium-staging
+argocd --grpc-web app sync cilium-prod
+argocd --grpc-web app wait cilium-dev --health --sync --timeout 900
+argocd --grpc-web app wait cilium-staging --health --sync --timeout 900
+argocd --grpc-web app wait cilium-prod --health --sync --timeout 900
+
+# Node da Ready thi sync lai monitoring
+argocd --grpc-web app sync monitoring-dev
+argocd --grpc-web app sync monitoring-staging
+argocd --grpc-web app sync monitoring-prod
 ```
 
 ---
