@@ -6,3 +6,7 @@ clustermesh:
   useAPIServer: true
   apiserver:
     replicas: 1
+
+hubble:
+  relay:
+    enabled: true
