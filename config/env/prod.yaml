@@ -45,7 +45,7 @@ rollout:
                               set -e
                               SVC="{{ "{{" }}args.service-name{{ "}}" }}"
                               echo "=== Smoke Test: $SVC ==="
-                              STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://$SVC/products 2>/dev/null || echo "000")
+                              STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://$SVC/health 2>/dev/null || echo "000")
                               if [ "$STATUS" = "000" ]; then
                                 echo "FAILED: Cannot reach $SVC"
                                 exit 1
@@ -90,7 +90,7 @@ rollout:
                                 },
                               };
                               export default function () {
-                                let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:8080/products');
+                                let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:8080/health');
                                 check(res, { 'status is 200': (r) => r.status === 200 });
                                 sleep(0.1);
                               }
