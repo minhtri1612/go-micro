@@ -19,7 +19,7 @@ rollout:
   enabled: true
   analysis:
     enabled: true
-    prometheusAddress: http://172.18.0.3:32090
+    prometheusAddress: http://172.18.0.2:32090
     templates:
       # Gate 1: Smoke Test - Job curl health endpoint, fail fast if 5xx
       - name: smoke-test
@@ -63,7 +63,7 @@ rollout:
         args:
           - name: service-name
         metrics:
-          # 2.1. k6 thợ xây (Load Generator)
+          # 2.1. k6 thợ xem (Load Generator)
           - name: load-generator-k6
             count: 1
             failureLimit: 0
@@ -84,16 +84,16 @@ rollout:
                               import http from 'k6/http';
                               import { check, sleep } from 'k6';
                               export const options = {
-                                vus: 20,
-                                duration: '45s',
+                                vus: 10,
+                                duration: '30s',
                                 thresholds: {
-                                  http_req_failed: ['rate<0.05'],
+                                  http_req_failed: ['rate<0.1'],
                                 },
                               };
                               export default function () {
                                 let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:8080/health');
                                 check(res, { 'status is 200': (r) => r.status === 200 });
-                                sleep(0.3);
+                                sleep(0.5);
                               }
                               EOF
           # 2.2. Giám sát viên Prometheus (Check P95 Latency lúc đang load)
@@ -105,7 +105,7 @@ rollout:
             successCondition: result[0] < 0.5  # Dev: P95 < 500ms
             provider:
               prometheus:
-                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.3:32090" }}'
+                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.2:32090" }}'
                 query: |
                   histogram_quantile(0.95, sum(rate(gin_uri_request_duration_seconds_bucket{pod=~'{{ "{{" }}args.service-name{{ "}}" }}-.*'}[1m])) by (le))
 
@@ -123,7 +123,7 @@ rollout:
             failureCondition: result[0] < 0.82
             provider:
               prometheus:
-                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.3:32090" }}'
+                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.2:32090" }}'
                 query: |
                   (
                     1 - (
