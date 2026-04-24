@@ -76,11 +76,10 @@ rollout:
                       containers:
                         - name: k6
                           image: grafana/k6:latest
-                          command: ["k6", "run", "-"]
-                          stdin: true
-                          stdinOnce: true
+                          command: ["sh", "-c"]
                           args:
                             - |
+                              cat <<EOF | k6 run -
                               import http from 'k6/http';
                               import { check, sleep } from 'k6';
                               export const options = {
@@ -91,10 +90,11 @@ rollout:
                                 },
                               };
                               export default function () {
-                                let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:{{ .Values.service.port }}/health');
+                                let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:8080/health');
                                 check(res, { 'status is 200': (r) => r.status === 200 });
                                 sleep(0.1);
                               }
+                              EOF
           # 2.2. Giám sát viên Prometheus (Check P95 Latency cực kỳ khắt khe)
           - name: latency-p95-check
             interval: 10s

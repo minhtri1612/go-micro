@@ -77,11 +77,10 @@ rollout:
                       containers:
                         - name: k6
                           image: grafana/k6:latest
-                          command: ["k6", "run", "-"]
-                          stdin: true
-                          stdinOnce: true
+                          command: ["sh", "-c"]
                           args:
                             - |
+                              cat <<EOF | k6 run -
                               import http from 'k6/http';
                               import { check, sleep } from 'k6';
                               export const options = {
@@ -96,6 +95,7 @@ rollout:
                                 check(res, { 'status is 200': (r) => r.status === 200 });
                                 sleep(0.3);
                               }
+                              EOF
           # 2.2. Giám sát viên Prometheus (Check P95 Latency lúc đang load)
           - name: latency-p95-check
             interval: 10s
