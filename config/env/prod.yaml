@@ -106,9 +106,7 @@ rollout:
               prometheus:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.3:32090" }}'
                 query: |
-                  histogram_quantile(0.95, 
-                    sum(rate(gin_uri_request_duration_seconds_bucket{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[1m])) by (le)
-                  )
+                  histogram_quantile(0.95, sum(rate(gin_uri_request_duration_seconds_bucket{pod=~'{{ "{{" }}args.service-name{{ "}}" }}-.*'}[1m])) by (le))
 
       # Gate 3: Success Rate - HTTP error rate thật (prod: ngưỡng 0.95)
       - name: success-rate

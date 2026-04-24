@@ -92,7 +92,7 @@ rollout:
                                 },
                               };
                               export default function () {
-                                let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:{{ .Values.service.port }}/health');
+                                let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:8080/health');
                                 check(res, { 'status is 200': (r) => r.status === 200 });
                                 sleep(0.3);
                               }
@@ -107,9 +107,7 @@ rollout:
               prometheus:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.3:32090" }}'
                 query: |
-                  histogram_quantile(0.95, 
-                    sum(rate(gin_uri_request_duration_seconds_bucket{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[1m])) by (le)
-                  )
+                  histogram_quantile(0.95, sum(rate(gin_uri_request_duration_seconds_bucket{pod=~'{{ "{{" }}args.service-name{{ "}}" }}-.*'}[1m])) by (le))
 
       # Gate 3: Success Rate - HTTP error rate thật (staging: ngưỡng 0.90)
       - name: success-rate
