@@ -18,7 +18,7 @@ rollout:
   enabled: true
   analysis:
     enabled: true
-    prometheusAddress: http://prometheus-global.monitoring.svc.cluster.local
+    prometheusAddress: http://10.222.206.155
     templates:
       # Gate 1: Smoke Test
       - name: smoke-test
@@ -104,7 +104,7 @@ rollout:
             successCondition: result[0] < 0.2  # Prod: P95 < 200ms
             provider:
               prometheus:
-                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://prometheus-global.monitoring.svc.cluster.local" }}'
+                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://10.222.206.155" }}'
                 query: |
                   histogram_quantile(0.95, sum(rate(gin_uri_request_duration_seconds_bucket{pod=~'{{ "{{" }}args.service-name{{ "}}" }}-.*'}[1m])) by (le))
 
@@ -122,7 +122,7 @@ rollout:
             failureCondition: result[0] < 0.95
             provider:
               prometheus:
-                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://prometheus-global.monitoring.svc.cluster.local" }}'
+                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://10.222.206.155" }}'
                 query: |
                   (
                     1 - (
