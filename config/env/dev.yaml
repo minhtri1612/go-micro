@@ -203,3 +203,8 @@ payment:
     target:
       name: go-micro-payment-secrets-dev
     remoteKey: go-micro/dev/app-credentials
+
+podMonitor:
+  enabled: true
+  interval: 15s
+  release: monitoring-management # Quan trọng: Phải khớp với release name của Prometheus Operator

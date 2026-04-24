@@ -203,3 +203,8 @@ payment:
     target:
       name: go-micro-payment-secrets-staging
     remoteKey: go-micro/staging/app-credentials
+
+podMonitor:
+  enabled: true
+  interval: 15s
+  release: monitoring-management
