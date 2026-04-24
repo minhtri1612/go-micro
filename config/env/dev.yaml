@@ -19,7 +19,7 @@ rollout:
   enabled: true
   analysis:
     enabled: true
-    prometheusAddress: http://10.221.72.180
+    prometheusAddress: http://172.18.255.45
     templates:
       # Gate 1: Smoke Test - Job curl health endpoint, fail fast if 5xx
       - name: smoke-test
