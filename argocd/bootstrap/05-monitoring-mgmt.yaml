@@ -17,6 +17,11 @@ spec:
     - repoURL: https://github.com/minhtri1612/go-micro.git
       targetRevision: main
       ref: values
+    - repoURL: https://github.com/minhtri1612/go-micro.git
+      targetRevision: main
+      path: monitoring
+      directory:
+        include: 'prometheus-global-management.yaml'
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring

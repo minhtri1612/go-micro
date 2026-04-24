@@ -18,6 +18,11 @@ spec:
     - repoURL: https://github.com/minhtri1612/go-micro.git
       targetRevision: main
       ref: values
+    - repoURL: https://github.com/minhtri1612/go-micro.git
+      targetRevision: main
+      path: monitoring
+      directory:
+        include: "prometheus-global-workload.yaml"
   destination:
     name: prod
     namespace: monitoring
