@@ -8,6 +8,13 @@ import (
 
 // SetupRoutes configures the API routes for the product service
 func SetupRoutes(router *gin.Engine, productController *controller.ProductController) {
+	// Health check
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status": "UP",
+		})
+	})
+
 	// Product routes
 	router.POST("/products", productController.CreateProduct)
 	router.GET("/products", productController.GetProducts)
