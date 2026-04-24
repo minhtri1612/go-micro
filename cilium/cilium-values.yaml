@@ -6,85 +6,53 @@ clustermesh:
   useAPIServer: true
   apiserver:
     replicas: 1
-    tls:
-      server:
-        extraDnsNames:
-          - "*.mesh.cilium.io"
-
-# L7 qua Envoy: cần cho HTTP/DNS chi tiết trên flow khi traffic đi qua proxy L7 (Gateway/L7 policy).
-l7Proxy: true
-
-loadBalancer:
-  algorithm: maglev
-
-# Phải khớp hub (cilium-values-management.yaml): ClusterMesh không ổn định khi hub tắt encryption mà spoke bật WireGuard.
-encryption:
-  enabled: false
-
-# BPF events → monitor/Hubble (drop / policy verdict / trace). Bật rõ ràng để debug policy trên UI.
-bpf:
-  events:
-    drop:
-      enabled: true
-    policyVerdict:
-      enabled: true
-    trace:
-      enabled: true
-
-# Hubble UI: Service map + flow table. Không thể bật “policy simulation” hay dashboard SRE (latency/5xx)
-# trong chính Hubble UI — các phần đó là cilium policy trace / Grafana + Prometheus.
-hubble:
-  enabled: true
-  # Buffer flow gần đây (giá trị hợp lệ theo chart Cilium).
-  eventBufferCapacity: "16383"
-  # Gắn flow với CiliumNetworkPolicy (egress_allowed_by / ingress_denied_by) trong UI.
-  networkPolicyCorrelation:
-    enabled: true
-  # false = giữ tối đa chi tiết L7 trên UI; bật redact khi cần ẩn PII.
-  redact:
-    enabled: false
-  # Một phần event từ cgroup lạ; false = hiển thị thêm (có thể nhiễu).
-  skipUnknownCGroupIDs: false
-  relay:
-    enabled: true
-  # UI workload: bật + NodePort riêng trong cilium-cluster-{dev,staging,prod}.yaml (31201–31203).
-  # Management: cilium-values-management.yaml (UI ClusterIP / port-forward 12000).
-  ui:
-    enabled: false
-  metrics:
-    # https://docs.cilium.io/en/stable/observability/metrics/#hubble-metrics
-    enabled:
-      - dns:query
-      - drop
-      - tcp
-      - flow
-      - icmp
-      - http
-      - port-distribution
-    enableOpenMetrics: true
-    serviceMonitor:
-      enabled: true
-    # Dashboard JSON Grafana: ConfigMap tạo trên cluster có Cilium (workload). Grafana của bạn
-    # chạy trên management → không tự import; bật true nếu sau này có Grafana trên cùng cluster.
-    dashboards:
-      enabled: false
-
-prometheus:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-    # Argo compare: cluster đã có CRD ServiceMonitor sau khi sync kube-prometheus-stack (monitoring-*).
-    trustCRDsExist: true
-
-operator:
-  # Kind thường 1 node: mặc định chart hay để 2 replica + hostPort → pod 2 Pending ("free ports") → Argo Degraded.
-  replicas: 1
-  prometheus:
-    enabled: true
-    serviceMonitor:
-      enabled: true
-
 tls:
   ca:
-    cert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURFekNDQWZ1Z0F3SUJBZ0lRY0tnN1k4U05JMGFnbHVrdDVSOG5vekFOQmdrcWhraUc5dzBCQVFzRkFEQVUKTVJJd0VBWURWUVFERXdsRGFXeHBkVzBnUTBFd0hoY05Nall3TkRJME1ESXpOakV3V2hjTk1qa3dOREl6TURJegpOakV3V2pBVU1SSXdFQVlEVlFRREV3bERhV3hwZFcwZ1EwRXdnZ0VpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCCkR3QXdnZ0VLQW9JQkFRREpvSTd1VDg1bHozNHBUU1loU2RqbDZxVUlkSjJSVVQrUGNIRWU3K3E1YkJQUGRhUXMKMUJUQUovV2JJU0QrcUl5Qy96aUVpbWEvL1VxczdtQlB1cDMyMkFBVGM0bDI4bHN1cFpLMTE0UHBBSk0zR21SUwplMkJJaVRTR3l6UHJCYkNZSDhneWI5QTB3VkRjMlVJWmlCWVdJTE9WeVp4TzMySDBETzczQXFpWGhaSjhWU2MxCnN1MG9HQTJJeUZWSFFDVDMyUFRXWmtjYk5OT2xKcmZwNFd1RTllVkxHMXlLdTVPNzZxUHJhYWhGaTV0bkdNWDMKS2hKMGJ0WHRsVWgrVUM3MHdDZ1B0WVNFN2NUUXFERS9IVk4rNlZ1ZWs5SHMrNHJCWVFmU1dvTFVBdU0vNGdyTgpGV25tT3QxRzlPMXRCenAwNWRLNVhCQ3VEU25hV2E3R0Z6ZEpBZ01CQUFHallUQmZNQTRHQTFVZER3RUIvd1FFCkF3SUNwREFkQmdOVkhTVUVGakFVQmdnckJnRUZCUWNEQVFZSUt3WUJCUVVIQXdJd0R3WURWUjBUQVFIL0JBVXcKQXdFQi96QWRCZ05WSFE0RUZnUVVxYlVhanQyMzlNeW9qK0lubW0yakhoeWdhRkV3RFFZSktvWklodmNOQVFFTApCUUFEZ2dFQkFMczdEa3dPKzdhZXUvSWVMTW51VHBWcXdhcHJDR2JvOVRldytQcHFiU3RNS05OYWJKTnlnOVJFClpPSzdXYVpVTlVFaE9TanFVZzg0bUNaeGk3ZHdQbEo1TXFNVlA4T3gyVGl6bWtCcVpKRVdic3N3VkF4clMzaG4KSzU0OEwxMnNuU0FOWkhOVk0yWkJKNkd2UU8xbVl2YmFUa0s4T0FMdUNDeENrQTNlaU1qZWV5L0hsVjVUNktiOQozd0djdFphQnZDRUxYbi9sdTRUUllnZVU4QlFUN09OVFRvazc0VlllNjF4QUhFcCszUlI5Tk9pSjRiUDA3WnBNCnZKMkUvTjlHZ3NNd1VSY0tyb2JFQ0hJTGJYeitVQnlLeVFMLzIzTFNVdEp3Vm9LMVlHM0tXUjU5bjBMNU1TZXkKdUgxbFlQNWhBWE1YQnlQdGJzTlJkY2pEc2xhOFRxcz0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
-    key: "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBeWFDTzdrL09aYzkrS1UwbUlVblk1ZXFsQ0hTZGtWRS9qM0J4SHUvcXVXd1R6M1drCkxOUVV3Q2YxbXlFZy9xaU1ndjg0aElwbXYvMUtyTzVnVDdxZDl0Z0FFM09KZHZKYkxxV1N0ZGVENlFDVE54cGsKVW50Z1NJazBoc3N6NndXd21CL0lNbS9RTk1GUTNObENHWWdXRmlDemxjbWNUdDloOUF6dTl3S29sNFdTZkZVbgpOYkx0S0JnTmlNaFZSMEFrOTlqMDFtWkhHelRUcFNhMzZlRnJoUFhsU3h0Y2lydVR1K3FqNjJtb1JZdWJaeGpGCjl5b1NkRzdWN1pWSWZsQXU5TUFvRDdXRWhPM0UwS2d4UHgxVGZ1bGJucFBSN1B1S3dXRUgwbHFDMUFMalArSUsKelJWcDVqcmRSdlR0YlFjNmRPWFN1VndRcmcwcDJsbXV4aGMzU1FJREFRQUJBb0lCQUFNeWtxY0xpUFhBWVZCOQpDQS9Gd0xUVXV5S2VodFBaSlZnOFZrUkJWY2hKcmRRVkdqSVpJdTNHaWNudUJUeVorN0I2ejdDbEUrcStOTzJpCmZOQ0c0SFBHWDlTWnpuZWVjYWUvRHlFOGRtWnBrSmJIeWw0c2dBMjd4S043OFgrQlZaaEpXTDdFQmRud1ZEeWgKdUJTamt6RENwVlp6YzJaNkpjUXpEYVJ6M0ZkRmRjOURTVUZ2alR0TU1mNWl4d1hkWXNvSGF5QmtrMUhOS1pNbApEQWk5N2xZMDVlQ2lMRExtMjI4dnh5RTBjQmNXNkpsOFZGUjJDNVdKcXB3L1FVOG5zRjUzZWhqSUNLaWppaVpWCk5zenlld21iUVE1ZThMRDZGUHlSak5BMnJDR1lhdFlnY1AyM2FFSDlKa0hCWjVhSVkxUWFlTkRQZzNOeWhZYkkKK0xKTm9TRUNnWUVBNk9mRzlyYllIWHRSdmlMT0FtSFVaUmdWVzdEZGVQYzRsUlNmVUxxQUtXcmJpT0daVnA0VQpNOFRHdll5YjlMbDAxZU12QjY3Rm85NWtEeHVVM2VKMjJkMlRFdnBTdnBWcGpoTG9uVXU4ckhoTG5lZXRDNVRZCk1zTWg1d2hYNWdSL0k4cHBkTHM5ZlREUGZZeXZ4Y1ZzSm1KQjRvQ29wRU1yTTg2dE1HbXF1c1VDZ1lFQTNaN0wKZWJmMjQvM2V5WmNNM0ZnWitpWFVaQ2RxQVVmVUFMOHN6R09iU1VzUHFyRERBallmZmdFdnp5T2hpZlJ4ZmFqTApreERNTXo3ZVBXWlFmclNRREhqcTdwaGtPWWxVa0VRUUZzamNUZ0QyRmZ5R3g2MnFBTTJDUnZHTCtEVmFRdHIzCkZFNkFrb3NKSGZ4ZGRJVDJ2WlFWMWgvOUZxRHA3bitsWldwM0lyVUNnWUEyYVlmYk5jWnh4TkRKR2ZxRkpmUG8KRm1OUEE1Z0tYYitUWExrSHREcWk4bnNObEo4dFZFc2wrUS94VXJ0UXhrOGNkVElVbW1sRUtuMjM1ZHEycCtUYQphMkNqNjJXUGJ2cTFIWWZJejl2cGMwVS9ROVB5dzdocXk1bk5EdTd5SnhUSStNNEFYb28wQ0VaQmI2L1ZCWldKCnRpVHNWT0NSVjd2dEk1amttWnN3ZlFLQmdRQzlPSnZhclN2cnRoTEdaR1hpcklaaGduTTVvRDF1SW5uc3VVM3kKcFFrdEp4MlZTNTcxQUdrYkdNQk5SOHJoRXdqamxYOWJiZmdydVAzZnhyL3JyeGRlenM4b01JMUNZdk1FeWxoQwpXL1ZkMUl4SWNYaFNmUUN0OXNuSThPdmxYUWhZRk1UcFhhMkJjWnl6TVlwSnRrMUZ5RzVzaUp0NitxRkJ0Vkx1CnFGeFlFUUtCZ1FERkt6U0FXQmIwMEVieEprWEg0K2tPOTAybllWTUlpVm1aUUdOMkRjZThUdEtBMmRoaG01eS8KQWFQSy9PVWh6NnpDa3ZQN1RGL0lZT2hSdHhmdEpZckVTcFVuVFBwSVlhWkNUa2pXYktnK2JnWk96c2owRXNZago2emNpdGVPTWd1WjRaZEozMDFwS1dBZTJ1WmJIVlVlUUs2MU5NTWlRSGZ6UlI0U25sNVpEYWc9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo="
+    cert: |
+      -----BEGIN CERTIFICATE-----
+      MIIDEzCCAfugAwIBAgIQLLaCJtpDspDBMBX1/gpMDTANBgkqhkiG9w0BAQsFADAU
+      MRIwEAYDVQQDEwlDaWxpdW0gQ0EwHhcNMjYwNDI0MDMxOTQ1WhcNMjkwNDIzMDMx
+      OTQ1WjAUMRIwEAYDVQQDEwlDaWxpdW0gQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IB
+      DwAwggEKAoIBAQC/o3TgrUJT3XHjVvz+0CNlBalSMPmS+L4pBMItgnuCoecp3ohN
+      QoJV1s/QsXv12NldVzZXhZnvJYeC/0p82fmof7BucUtQ9fTOuMZQYCTUZ09WG+eD
+      cVHVKkON6SlkAIH39C0BVRoKy3SMqw5pQWQoEx2A5Jr0ylmJ5Lc6kFCa0ssbxoIe
+      rBgCiG9wABeuI3/Xr5utaRdp0vhqRuyFbypF0wix7pSKUFtM8jR6jXKtVskqbneg
+      C3wSfgL9F+puuMNRdtpLOk88nf1huBT6Ra4AGed5MZrriFcZDUUsgI/rCeEsvw4d
+      79BmFqH3+dSgf4ZxhQwkNaPXq0coo6l5Rk/7AgMBAAGjYTBfMA4GA1UdDwEB/wQE
+      AwICpDAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwDwYDVR0TAQH/BAUw
+      AwEB/zAdBgNVHQ4EFgQUkQlMJqmnpsF12H2FWNHLznCRhoQwDQYJKoZIhvcNAQEL
+      BQADggEBAK7oi0oRftVvQwdnmbhWDu+6qH7zI+/PSaGRgVRP8WxihWKIGHlW9gKk
+      YrCon/NhVY7ANxAk2HVgrEFnwp8oGlP9UpJJsrGgGMP+Plx51SY10HEAQME+OCe1
+      bE02EYjupUujP3yrqDecGqTXtrDp4g632YVQFCGE++/JqskxUbA12lBNEgZWyuxE
+      X+HFRqeW5Ye4Ft6tJfUxUN5fcKSpdOqx9fqQ1d1vhuSRSfi6QTtgrktGw6YsVzbU
+      Gti6nArzaIVncf1oTzoLOMMjekjmmc2oMYrpMlOxEieQjkF0cGHAtY2wuBN4d4sB
+      dFroBkKP1AznRZos+oOdpmiep3jiwHE=
+      -----END CERTIFICATE-----
+    key: |
+      -----BEGIN RSA PRIVATE KEY-----
+      MIIEowIBAAKCAQEAv6N04K1CU91x41b8/tAjZQWpUjD5kvi+KQTCLYJ7gqHnKd6I
+      TUKCVdbP0LF79djZXVc2V4WZ7yWHgv9KfNn5qH+wbnFLUPX0zrjGUGAk1GdPVhvn
+      g3FR1SpDjekpZACB9/QtAVUaCst0jKsOaUFkKBMdgOSa9MpZieS3OpBQmtLLG8aC
+      HqwYAohvcAAXriN/16+brWkXadL4akbshW8qRdMIse6UilBbTPI0eo1yrVbJKm53
+      oAt8En4C/RfqbrjDUXbaSzpPPJ39YbgU+kWuABnneTGa64hXGQ1FLICP6wnhLL8O
+      He/QZhah9/nUoH+GcYUMJDWj16tHKKOpeUZP+wIDAQABAoIBAFI/lbieM+Lpnmkb
+      mw7EBwTjFqY7dcoB7x+MtsgwgdDxqtR5+VbrbiPoQ54GprS/wp7AgQa0RPpySYRM
+      DEykgvWyA+eKwW/4d/7HJ/o0IWp2AoNrC4SK/Lu33XGJOiX838srJau2Oiya4KVE
+      /zTmh1V5ysZYlzbrp906Z/d/G9EuXDMsiSVU/SMIBTuLLaf8BIsPlmhV9Svv4FvT
+      eYMpLNU4BBuDRQdQlfBqkMOcSKK2f+EKf1G/1A5PR1Yds0LFnRYqjZuAAVQq2Rk2
+      Q3gaxMM3YLns/sp/d5J8xsvjAytTC0LKtgMTpeaMZrLP/ASCNPXfXRMj+cgZiXs4
+      srzkHqkCgYEA3xTLKSM1M3yynLAyX96SBtF2rBB+YjfDtDR5td4weRrwn/VD18BG
+      Uf1BccnoxxLN9zfT6JzJL+67RXrMXDw1qW8fcg2PWggcWxCmOT5e/8+HYBdEf3hD
+      hhfaCtKM+SvBynW/qRULnpJY7n4CgACk7JRGziOqLGoV7ROCNaEjsRkCgYEA2+re
+      ti1qkv39nLoqg6Ku3GgOjjgsrL3FO5yuUyO1pchZbg1MJ7rktrYeI8AcVDPrWeZQ
+      O7SLR2RdMcj3n5OjlK6y4OJaMFuw310mCgCRsCa22mTM2+P/HyiwHpcwBGXgYJoC
+      iCnfmmoJ/KQH/Nm3+ZjC2tVFi62Skhcc90STSDMCgYEAovqGEt/uFlecBm2T4Aaz
+      mNefY8YJD6i+CgHsibpyn4fXFIYTsqR+u5fTIFbrAcXzRBI9d0xUj/hSSUiV1S0H
+      52mQB7twZ85VKRLY3il7LlloBgP5v0cVzfnPCukYpVIamte71sPRYWB6KINXQD04
+      QL9zm1bjFN/MdRAzqQq5EMECgYA4npKyYqUCrUPjWwbhFzxf4KaGtS3DV6R1AZTc
+      MOBui1ODAwdtXy/NXrwJxkdE4o0geyyDAqutOMjJrY0bV56RBB1nyr8fniu+hjPp
+      9VWM/ZqsRbF8l4mykv4tEg25xCTtmhk2x1kbX1us4OpxjfhQ2aSpRKmAGbMXy72Y
+      Z95ngwKBgC9A/qrDQB8CUABq/vHwJBOazDjfUgPv0rJSJJDy6tz7P2c1LheFeBbI
+      FgrHaG+vnaGbxxlwiP/GMJX4gR3uE+RkLkSZ9rxQB8Dv9FZbNTb2lAklzD49+o3H
+      gDyg67xf5SSpuJ5QThrPzQFee/ZpC7eNabaVqOxA0pqC0hTUpfAf
+      -----END RSA PRIVATE KEY-----
