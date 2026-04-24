@@ -56,13 +56,14 @@ rollout:
                               fi
                               echo "PASSED: $SVC returned HTTP $STATUS"
 
-      # Gate 2: Synthetic Load - k6 warm-up + tạo data Prometheus
-      # Prod: 50 VUs x 60s, cực kỳ nghiêm ngặt max 2% error
+      # Gate 2: Synthetic Load - k6 warm-up + Prometheus Latency validation
+      # Prod: 50 VUs, P95 < 200ms
       - name: synthetic-load
         args:
           - name: service-name
         metrics:
-          - name: load-test-k6
+          # 2.1. k6 thợ xây (Load Generator)
+          - name: load-generator-k6
             count: 1
             failureLimit: 0
             provider:
@@ -86,15 +87,28 @@ rollout:
                                 vus: 50,
                                 duration: '60s',
                                 thresholds: {
-                                  http_req_failed: ['rate<0.02'], // Error rate cực thấp < 2%
+                                  http_req_failed: ['rate<0.02'],
                                 },
                               };
                               export default function () {
-                                // Gọi vào service canary của Prod
                                 let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:{{ .Values.service.port }}/health');
                                 check(res, { 'status is 200': (r) => r.status === 200 });
-                                sleep(0.1); // Traffic dồn dập
+                                sleep(0.1);
                               }
+          # 2.2. Giám sát viên Prometheus (Check P95 Latency cực kỳ khắt khe)
+          - name: latency-p95-check
+            interval: 10s
+            count: 10
+            initialDelay: 10s
+            failureLimit: 1
+            successCondition: result[0] < 0.2  # Prod: P95 < 200ms
+            provider:
+              prometheus:
+                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.3:32090" }}'
+                query: |
+                  histogram_quantile(0.95, 
+                    sum(rate(gin_uri_request_duration_seconds_bucket{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[1m])) by (le)
+                  )
 
       # Gate 3: Success Rate - HTTP error rate thật (prod: ngưỡng 0.95)
       - name: success-rate

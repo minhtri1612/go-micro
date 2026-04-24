@@ -57,13 +57,14 @@ rollout:
                               fi
                               echo "PASSED: $SVC returned HTTP $STATUS"
 
-      # Gate 2: Synthetic Load - k6 warm-up + tạo data Prometheus
-      # Staging: 20 VUs x 60s, chấp nhận < 5% error
+      # Gate 2: Synthetic Load - k6 warm-up + Prometheus Latency validation
+      # Staging: 20 VUs, P95 < 300ms
       - name: synthetic-load
         args:
           - name: service-name
         metrics:
-          - name: load-test-k6
+          # 2.1. k6 thợ xây (Load Generator)
+          - name: load-generator-k6
             count: 1
             failureLimit: 0
             provider:
@@ -85,17 +86,30 @@ rollout:
                               import { check, sleep } from 'k6';
                               export const options = {
                                 vus: 20,
-                                duration: '60s',
+                                duration: '45s',
                                 thresholds: {
-                                  http_req_failed: ['rate<0.05'], // Error rate < 5%
+                                  http_req_failed: ['rate<0.05'],
                                 },
                               };
                               export default function () {
-                                // Gọi vào service canary để warm-up bản mới
                                 let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:{{ .Values.service.port }}/health');
                                 check(res, { 'status is 200': (r) => r.status === 200 });
-                                sleep(0.2); // Gửi traffic dày đặc hơn ở Staging
+                                sleep(0.3);
                               }
+          # 2.2. Giám sát viên Prometheus (Check P95 Latency lúc đang load)
+          - name: latency-p95-check
+            interval: 10s
+            count: 5
+            initialDelay: 10s
+            failureLimit: 0
+            successCondition: result[0] < 0.3  # Staging: P95 < 300ms
+            provider:
+              prometheus:
+                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.3:32090" }}'
+                query: |
+                  histogram_quantile(0.95, 
+                    sum(rate(gin_uri_request_duration_seconds_bucket{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[1m])) by (le)
+                  )
 
       # Gate 3: Success Rate - HTTP error rate thật (staging: ngưỡng 0.90)
       - name: success-rate
