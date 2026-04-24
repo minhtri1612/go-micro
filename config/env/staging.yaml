@@ -107,7 +107,7 @@ rollout:
               prometheus:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://10.222.206.155" }}'
                 query: |
-                  histogram_quantile(0.95, sum(rate(gin_http_request_duration_seconds_bucket{pod=~'{{ "{{" }}args.service-name{{ "}}" }}-.*'}[1m])) by (le))
+                  histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ "{{" }}args.service-name{{ "}}" }}-.*'}[1m])) by (le))
 
       # Gate 3: Success Rate - HTTP error rate thật (staging: ngưỡng 0.90)
       - name: success-rate
@@ -127,9 +127,9 @@ rollout:
                 query: |
                   (
                     1 - (
-                      sum(rate(gin_http_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*",code=~"5.."}[2m])) or vector(0)
+                      sum(rate(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*",code=~"5.."}[2m])) or vector(0)
                       /
-                      (sum(rate(gin_http_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[2m])) or vector(1))
+                      (sum(rate(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[2m])) or vector(1))
                     )
                   ) or vector(1)
   strategy: canary
