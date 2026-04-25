@@ -49,9 +49,8 @@ rollout:
                               PORT="{{ `{{` }}args.service-port{{ `}}` }}"
                               echo "🚀 [Smoke Test] Testing Dark Launch logic for: $SVC:$PORT"
                               
-                              # 1. Thực hiện gọi API với Header X-Canary (giống Postman của bạn)
-                              # Chúng ta lấy cả Response Code và các Headers về để check
-                              RESPONSE=$(curl -I -s -H "X-Canary: true" http://$SVC:$PORT/health)
+                              # 1. Thực hiện gọi API với Header X-Canary (Sử dụng GET thay vì HEAD)
+                              RESPONSE=$(curl -i -s -X GET -H "X-Canary: true" http://$SVC:$PORT/health)
                               
                               # 2. Kiểm tra HTTP Status (Phải là 200)
                               HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')

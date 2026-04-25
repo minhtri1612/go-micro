@@ -48,8 +48,8 @@ rollout:
                                PORT="{{ `{{` }}args.service-port{{ `}}` }}"
                                echo "🔥 [PROD SMOKE TEST] Critical Routing Validation: $SVC:$PORT"
                                
-                               # 1. Gọi API với Header X-Canary (Check Dark Launch)
-                               RESPONSE=$(curl -I -s -H "X-Canary: true" http://$SVC:$PORT/health)
+                               # 1. Gọi API với Header X-Canary (Sử dụng GET thay vì HEAD)
+                               RESPONSE=$(curl -i -s -X GET -H "X-Canary: true" http://$SVC:$PORT/health)
                               
                               # 2. Kiểm tra HTTP Status
                               HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')
