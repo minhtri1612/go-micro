@@ -26,6 +26,8 @@ rollout:
         args:
           - name: service-name
           - name: service-port
+          - name: hostname
+          - name: path-prefix
         metrics:
           - name: health-check
             count: 1
@@ -45,12 +47,13 @@ rollout:
                             - -c
                             - |
                               set -e
-                              SVC="{{ `{{` }}args.service-name{{ `}}` }}"
-                              PORT="{{ `{{` }}args.service-port{{ `}}` }}"
-                              echo "🏗️  [STAGING SMOKE TEST] Validating Canary Routing for: $SVC:$PORT"
-                              
-                              # 1. Gọi API với Header X-Canary (Sử dụng GET thay vì HEAD)
-                              RESPONSE=$(curl -i -s -X GET -H "X-Canary: true" http://$SVC:$PORT/health)
+                               GATEWAY="traefik.traefik.svc.cluster.local"
+                               HOST="{{ `{{` }}args.hostname{{ `}}` }}"
+                               PREFIX="{{ `{{` }}args.path-prefix{{ `}}` }}"
+                               echo "🏗️  [STAGING SMOKE TEST] Validating Canary Routing for: $HOST"
+                               
+                               # 1. Gọi API qua Traefik Gateway với Host header
+                               RESPONSE=$(curl -i -s -X GET -H "Host: $HOST" -H "X-Canary: true" http://$GATEWAY$PREFIX/health)
                               
                               # 2. Kiểm tra HTTP Status
                               HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')
@@ -159,6 +162,10 @@ rollout:
               value: '{{ include "template.fullname" . }}'
             - name: service-port
               value: '{{ .Values.service.port }}'
+            - name: hostname
+              value: '{{ .Values.traefik.hostname }}'
+            - name: path-prefix
+              value: '{{ .Values.traefik.pathPrefix | default "" }}'
       # Wave 2: Synthetic load - warm up + tạo Prometheus data
       - analysis:
           templates:
