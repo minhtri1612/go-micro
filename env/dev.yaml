@@ -4,8 +4,7 @@ env: dev
 
 product:
   image:
-    tag: "product-service-v1.0.2"
-    updatedAt: "2026-04-24-23-53" # Thêm dòng này để tạo thay đổi cho Git recognition
+    tag: "product-service-v1.0.3"
   replicaCount: 2
   rollout:
     enabled: true

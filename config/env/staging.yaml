@@ -44,7 +44,7 @@ rollout:
                             - -c
                             - |
                               set -e
-                              SVC="{{ "{{" }}args.service-name{{ "}}" }}"
+                              SVC="{{ `{{` }}args.service-name{{ `}}` }}"
                               echo "🏗️  [STAGING SMOKE TEST] Validating Canary Routing for: $SVC"
                               
                               # 1. Gọi API với Header X-Canary
@@ -104,7 +104,7 @@ rollout:
                                 },
                               };
                               export default function () {
-                                let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:8080/health');
+                                let res = http.get('http://{{ `{{` }}args.service-name{{ `}}` }}-canary:8080/health');
                                 check(res, { 'status is 200': (r) => r.status === 200 });
                                 sleep(0.3);
                               }
@@ -120,7 +120,7 @@ rollout:
               prometheus:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
                 query: |
-                  histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ "{{" }}args.service-name{{ "}}" }}-.*'}[1m])) by (le))
+                  histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[1m])) by (le))
 
       # Gate 3: Success Rate - HTTP error rate thật (staging: ngưỡng 0.90)
       - name: success-rate

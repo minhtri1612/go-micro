@@ -43,10 +43,10 @@ rollout:
                             - -c
                             - |
                               set -e
-                              SVC="{{ "{{" }}args.service-name{{ "}}" }}"
-                              echo "🚨 [PROD SMOKE TEST] Verifying Canary Routing Integrity for: $SVC"
+                              SVC="{{ `{{` }}args.service-name{{ `}}` }}"
+                              echo "🔥 [PROD SMOKE TEST] Critical Routing Validation: $SVC"
                               
-                              # 1. Gọi API với Dark Launch Header
+                              # 1. Gọi API với Header X-Canary (Check Dark Launch)
                               RESPONSE=$(curl -I -s -H "X-Canary: true" http://$SVC/health)
                               
                               # 2. Kiểm tra HTTP Status
@@ -103,7 +103,7 @@ rollout:
                                 },
                               };
                               export default function () {
-                                let res = http.get('http://{{ "{{" }}args.service-name{{ "}}" }}-canary:8080/health');
+                                let res = http.get('http://{{ `{{` }}args.service-name{{ `}}` }}-canary:8080/health');
                                 check(res, { 'status is 200': (r) => r.status === 200 });
                                 sleep(0.1);
                               }
@@ -119,7 +119,7 @@ rollout:
               prometheus:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
                 query: |
-                  histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ "{{" }}args.service-name{{ "}}" }}-.*'}[1m])) by (le))
+                  histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[1m])) by (le))
 
       # Gate 3: Success Rate - HTTP error rate thật (prod: ngưỡng 0.95)
       - name: success-rate
