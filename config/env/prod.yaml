@@ -44,17 +44,30 @@ rollout:
                             - |
                               set -e
                               SVC="{{ "{{" }}args.service-name{{ "}}" }}"
-                              echo "=== Smoke Test: $SVC ==="
-                              STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://$SVC/health 2>/dev/null || echo "000")
-                              if [ "$STATUS" = "000" ]; then
-                                echo "FAILED: Cannot reach $SVC"
+                              echo "🚨 [PROD SMOKE TEST] Verifying Canary Routing Integrity for: $SVC"
+                              
+                              # 1. Gọi API với Dark Launch Header
+                              RESPONSE=$(curl -I -s -H "X-Canary: true" http://$SVC/health)
+                              
+                              # 2. Kiểm tra HTTP Status
+                              HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')
+                              echo "📈 Response Status: $HTTP_CODE"
+                              
+                              if [ "$HTTP_CODE" != "200" ]; then
+                                echo "🛑 FATAL ERROR: Production Canary returned $HTTP_CODE! Aborting Rollout immediately."
                                 exit 1
                               fi
-                              if [ "$STATUS" -ge 500 ]; then
-                                echo "FAILED: $SVC returned HTTP $STATUS"
+
+                              # 3. Kiểm tra Header X-Served-By (Phải là 'canary')
+                              SERVED_BY=$(echo "$RESPONSE" | grep -i "X-Served-By" | awk '{print $2}' | tr -d '\r')
+                              echo "🔍 Identity Check: Served-By => $SERVED_BY"
+                              
+                              if [ "$SERVED_BY" != "canary" ]; then
+                                echo "🛑 SECURITY ALERT: Traffic leak detected! Request routed to '$SERVED_BY' instead of Canary."
                                 exit 1
                               fi
-                              echo "PASSED: $SVC returned HTTP $STATUS"
+
+                              echo "✅ SUCCESS: Canary identity verified. Proceeding to Synthetic Load tests."
 
       # Gate 2: Synthetic Load - k6 warm-up + Prometheus Latency validation
       # Prod: 50 VUs, P95 < 200ms

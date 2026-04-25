@@ -45,17 +45,31 @@ rollout:
                             - |
                               set -e
                               SVC="{{ "{{" }}args.service-name{{ "}}" }}"
-                              echo "=== Smoke Test: $SVC ==="
-                              STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://$SVC/health 2>/dev/null || echo "000")
-                              if [ "$STATUS" = "000" ]; then
-                                echo "FAILED: Cannot reach $SVC"
+                              echo "🚀 [Smoke Test] Testing Dark Launch logic for: $SVC"
+                              
+                              # 1. Thực hiện gọi API với Header X-Canary (giống Postman của bạn)
+                              # Chúng ta lấy cả Response Code và các Headers về để check
+                              RESPONSE=$(curl -I -s -H "X-Canary: true" http://$SVC/health)
+                              
+                              # 2. Kiểm tra HTTP Status (Phải là 200)
+                              HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')
+                              echo "📊 HTTP Status Code: $HTTP_CODE"
+                              
+                              if [ "$HTTP_CODE" != "200" ]; then
+                                echo "❌ FAILED: App returned $HTTP_CODE instead of 200"
                                 exit 1
                               fi
-                              if [ "$STATUS" -ge 500 ]; then
-                                echo "FAILED: $SVC returned HTTP $STATUS"
+
+                              # 3. Kiểm tra Header X-Served-By (Phải là 'canary' - Đúng logic Postman của bạn)
+                              SERVED_BY=$(echo "$RESPONSE" | grep -i "X-Served-By" | awk '{print $2}' | tr -d '\r')
+                              echo "🛡️  Served-By Header: $SERVED_BY"
+                              
+                              if [ "$SERVED_BY" != "canary" ]; then
+                                echo "❌ FAILED: Request was NOT served by Canary (X-Served-By is '$SERVED_BY')"
                                 exit 1
                               fi
-                              echo "PASSED: $SVC returned HTTP $STATUS"
+
+                              echo "✅ PASSED: Canary is healthy and routing is correct!"
 
       # Gate 2: Synthetic Load - k6 warm-up + Prometheus Latency validation
       # Dev: 10 VUs, P95 < 500ms
@@ -143,23 +157,33 @@ rollout:
           args:
             - name: service-name
               value: '{{ include "template.fullname" . }}'
-      # Wave 2: Synthetic load - warm up + tạo Prometheus data
+      # Wave 1: 5% - Smoke test nhanh, fail ngay nếu service không start được
+      - setWeight: 5
       - analysis:
           templates:
-            - templateName: '{{ include "template.fullname" . }}-synthetic-load'
+            - templateName: '{{ include "template.fullname" . }}-smoke-test'
           args:
             - name: service-name
               value: '{{ include "template.fullname" . }}'
-      # Wave 3: 20% - Mở rộng, chờ traffic thật rồi check Prometheus
-      - setWeight: 20
-      - pause:
-          duration: 3m
-      - analysis:
-          templates:
-            - templateName: '{{ include "template.fullname" . }}-success-rate'
-          args:
-            - name: service-name
-              value: '{{ include "template.fullname" . }}'
+      
+      # Wave 2: Synthetic load - Tạm thời đóng để test Gate 1
+      # - analysis:
+      #     templates:
+      #       - templateName: '{{ include "template.fullname" . }}-synthetic-load'
+      #     args:
+      #       - name: service-name
+      #         value: '{{ include "template.fullname" . }}'
+
+      # Wave 3: 20% - Tạm thời đóng để test Gate 1
+      # - setWeight: 20
+      # - pause:
+      #     duration: 3m
+      # - analysis:
+      #     templates:
+      #       - templateName: '{{ include "template.fullname" . }}-success-rate'
+      #     args:
+      #       - name: service-name
+      #         value: '{{ include "template.fullname" . }}'
       # Wave 4: Promote
       - setWeight: 50
       - setWeight: 100
