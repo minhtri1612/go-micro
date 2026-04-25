@@ -24,6 +24,7 @@ rollout:
       - name: smoke-test
         args:
           - name: service-name
+          - name: service-port
         metrics:
           - name: health-check
             count: 1
@@ -43,11 +44,12 @@ rollout:
                             - -c
                             - |
                               set -e
-                              SVC="{{ `{{` }}args.service-name{{ `}}` }}"
-                              echo "🔥 [PROD SMOKE TEST] Critical Routing Validation: $SVC"
-                              
-                              # 1. Gọi API với Header X-Canary (Check Dark Launch)
-                              RESPONSE=$(curl -I -s -H "X-Canary: true" http://$SVC/health)
+                               SVC="{{ `{{` }}args.service-name{{ `}}` }}"
+                               PORT="{{ `{{` }}args.service-port{{ `}}` }}"
+                               echo "🔥 [PROD SMOKE TEST] Critical Routing Validation: $SVC:$PORT"
+                               
+                               # 1. Gọi API với Header X-Canary (Check Dark Launch)
+                               RESPONSE=$(curl -I -s -H "X-Canary: true" http://$SVC:$PORT/health)
                               
                               # 2. Kiểm tra HTTP Status
                               HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')
@@ -155,6 +157,8 @@ rollout:
           args:
             - name: service-name
               value: '{{ include "template.fullname" . }}'
+            - name: service-port
+              value: '{{ .Values.service.port }}'
       # Wave 2: Synthetic load - warm up + generate metrics
       - analysis:
           templates:
