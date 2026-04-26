@@ -152,9 +152,24 @@ argocd --grpc-web app sync monitoring-dev
 argocd --grpc-web app sync monitoring-staging
 argocd --grpc-web app sync monitoring-prod
 # Khong wait monitoring workload o day: monitoring-dev/staging/prod can node Ready (co CNI) moi
-# schedule duoc pod, nhung node chua Ready vi Cilium chua len. Day la deadlock co the xay ra.
-# Neu gap trieu chung node NotReady + monitoring Pending + cilium sync fail vi thieu ServiceMonitor CRD
-# → xem muc 4.1 / 4.2 de pha deadlock bang kubectl patch.
+# schedule duoc pod, nhung node chua Ready vi Cilium chua len. Đây là điểm cực kỳ dễ gây DEADLOCK.
+
+> [!IMPORTANT]
+> **NẾU GẶP LỖI:** Node `NotReady` + Monitoring `Pending` + Cilium sync fail (thiếu ServiceMonitor CRD)
+> Hãy chạy ngay block lệnh dưới đây để phá deadlock (đã test thành công):
+> ```bash
+> # 1. Patch tắt ServiceMonitor để Cilium không đòi CRD nữa
+> for env in dev staging prod; do
+>   kubectl --context kind-management -n argocd patch application cilium-$env --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
+> done
+> # 2. Sync Cilium trước để node lên Ready
+> argocd --grpc-web app sync cilium-dev cilium-staging cilium-prod --grpc-web
+> argocd --grpc-web app wait cilium-dev cilium-staging cilium-prod --health --timeout 600 --grpc-web
+> # 3. Bây giờ mới sync Monitoring
+> argocd --grpc-web app sync monitoring-dev monitoring-staging monitoring-prod --grpc-web
+> ```
+
+# cilium workload
 
 # cilium workload
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
