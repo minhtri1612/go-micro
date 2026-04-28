@@ -159,14 +159,14 @@ argocd --grpc-web app sync monitoring-prod
 > Hãy chạy ngay block lệnh dưới đây để phá deadlock (đã test thành công):
 > ```bash
 > # 1. Patch tắt ServiceMonitor để Cilium không đòi CRD nữa
-> for env in dev staging prod; do
->   kubectl --context kind-management -n argocd patch application cilium-$env --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
-> done
+ for env in dev staging prod; do
+   kubectl --context kind-management -n argocd patch application cilium-$env --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
+ done
 > # 2. Sync Cilium trước để node lên Ready
-> argocd --grpc-web app sync cilium-dev cilium-staging cilium-prod --grpc-web
-> argocd --grpc-web app wait cilium-dev cilium-staging cilium-prod --health --timeout 600 --grpc-web
+ argocd --grpc-web app sync cilium-dev cilium-staging cilium-prod --grpc-web
+ argocd --grpc-web app wait cilium-dev cilium-staging cilium-prod --health --timeout 600 --grpc-web
 > # 3. Bây giờ mới sync Monitoring
-> argocd --grpc-web app sync monitoring-dev monitoring-staging monitoring-prod --grpc-web
+ argocd --grpc-web app sync monitoring-dev monitoring-staging monitoring-prod --grpc-web
 > ```
 
 # cilium workload
