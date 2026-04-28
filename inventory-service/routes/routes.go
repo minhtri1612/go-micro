@@ -8,6 +8,13 @@ import (
 
 // SetupRoutes configures the API routes for the inventory service
 func SetupRoutes(router *gin.Engine, inventoryController *controller.InventoryController) {
+	// Health check
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status": "UP",
+		})
+	})
+
 	// Inventory routes
 	router.POST("/inventory", inventoryController.CreateInventory)
 	router.GET("/inventory", inventoryController.GetInventories)
