@@ -19,17 +19,17 @@ appsByEnv:
   order:
     profile: "order"
     namespace: "microservices"
-    syncWave: "2"
+    syncWave: "3"
   
   payment:
     profile: "payment"
     namespace: "microservices"
-    syncWave: "2"
+    syncWave: "3"
   
   noti:
     profile: "noti"
     namespace: "microservices"
-    syncWave: "2"
+    syncWave: "3"
   
   client:
     profile: "client"
