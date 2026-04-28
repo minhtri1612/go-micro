@@ -167,26 +167,37 @@ rollout:
                             - |
                               set -e
                               SERVICE="{{ `{{` }}args.service-name{{ `}}` }}"
+                              svc_port() {
+                                case "$1" in
+                                  product) echo 8080 ;;
+                                  order) echo 8081 ;;
+                                  inventory) echo 8082 ;;
+                                  noti) echo 8083 ;;
+                                  payment) echo 8084 ;;
+                                  client) echo 80 ;;
+                                  *) echo 8080 ;;
+                                esac
+                              }
 
                               case "$SERVICE" in
                                 product)
-                                  BASE="http://${SERVICE}-canary:8080"
+                                  BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   NAME="canary-smoke-${RANDOM}"
                                   CREATE_BODY=$(curl -sS -X POST "$BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"$NAME\",\"description\":\"canary-smoke\",\"price\":11.11}")
                                   PRODUCT_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   [ -n "$PRODUCT_ID" ] || { echo "FAILED: product create id missing"; exit 1; }
                                   ;;
                                 inventory)
-                                  BASE="http://${SERVICE}-canary:8080"
+                                  BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((1000 + RANDOM % 9000))
                                   CREATE_BODY=$(curl -sS -X POST "$BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":20,\"sku\":\"SKU-$PID\",\"location\":\"A1\"}")
                                   INV_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   [ -n "$INV_ID" ] || { echo "FAILED: inventory create id missing"; exit 1; }
                                   ;;
                                 order)
-                                  P_BASE="http://product-canary:8080"
-                                  I_BASE="http://inventory-canary:8080"
-                                  O_BASE="http://${SERVICE}-canary:8080"
+                                  P_BASE="http://product-canary:$(svc_port product)"
+                                  I_BASE="http://inventory-canary:$(svc_port inventory)"
+                                  O_BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((2000 + RANDOM % 9000))
                                   curl -sS -X POST "$P_BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}" >/dev/null
                                   curl -sS -X POST "$I_BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":30,\"sku\":\"OSKU-$PID\",\"location\":\"B2\"}" >/dev/null
@@ -195,12 +206,12 @@ rollout:
                                   [ -n "$ORDER_ID" ] || { echo "FAILED: order create id missing"; exit 1; }
                                   ;;
                                 payment)
-                                  BASE="http://${SERVICE}-canary:8080"
+                                  BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PAY_BODY=$(curl -sS -X POST "$BASE/payments/" -H "Content-Type: application/json" -d '{"order_id":9001,"customer_id":1,"amount":10.5,"currency":"usd"}')
                                   echo "$PAY_BODY" | grep -F "\"payment\"" >/dev/null
                                   ;;
                                 noti)
-                                  BASE="http://${SERVICE}-canary:8080"
+                                  BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   NOTI_BODY=$(curl -sS -X POST "$BASE/notifications" -H "Content-Type: application/json" -d '{"order_id":9001,"customer_id":1,"message":"canary smoke","status":"pending"}')
                                   NOTI_ID=$(echo "$NOTI_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   [ -n "$NOTI_ID" ] || { echo "FAILED: notification create id missing"; exit 1; }
@@ -233,15 +244,26 @@ rollout:
                             - |
                               set -e
                               SERVICE="{{ `{{` }}args.service-name{{ `}}` }}"
+                              svc_port() {
+                                case "$1" in
+                                  product) echo 8080 ;;
+                                  order) echo 8081 ;;
+                                  inventory) echo 8082 ;;
+                                  noti) echo 8083 ;;
+                                  payment) echo 8084 ;;
+                                  client) echo 80 ;;
+                                  *) echo 8080 ;;
+                                esac
+                              }
 
                               case "$SERVICE" in
                                 product)
-                                  BASE="http://${SERVICE}-canary:8080"
+                                  BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   LIST_BODY=$(curl -sS "$BASE/products")
                                   [ "$LIST_BODY" = "[]" ] || echo "$LIST_BODY" | grep -F "\"id\":" >/dev/null
                                   ;;
                                 inventory)
-                                  BASE="http://${SERVICE}-canary:8080"
+                                  BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((3000 + RANDOM % 9000))
                                   CREATE_BODY=$(curl -sS -X POST "$BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":9,\"sku\":\"DSKU-$PID\",\"location\":\"C3\"}")
                                   INV_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
@@ -250,9 +272,9 @@ rollout:
                                   echo "$GET_BODY" | grep -E "\"id\":[[:space:]]*$INV_ID" >/dev/null
                                   ;;
                                 order)
-                                  P_BASE="http://product-canary:8080"
-                                  I_BASE="http://inventory-canary:8080"
-                                  O_BASE="http://${SERVICE}-canary:8080"
+                                  P_BASE="http://product-canary:$(svc_port product)"
+                                  I_BASE="http://inventory-canary:$(svc_port inventory)"
+                                  O_BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((4000 + RANDOM % 9000))
                                   curl -sS -X POST "$P_BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"dep-pre-$PID\",\"description\":\"seed\",\"price\":21.5}" >/dev/null
                                   curl -sS -X POST "$I_BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":25,\"sku\":\"ODSKU-$PID\",\"location\":\"D4\"}" >/dev/null
@@ -263,14 +285,14 @@ rollout:
                                   echo "$ORDER_GET" | grep -E "\"id\":[[:space:]]*$ORDER_ID" >/dev/null
                                   ;;
                                 payment)
-                                  BASE="http://${SERVICE}-canary:8080"
+                                  BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PAY_ORDER_ID=$((5000 + RANDOM % 9000))
                                   curl -sS -X POST "$BASE/payments/" -H "Content-Type: application/json" -d "{\"order_id\":$PAY_ORDER_ID,\"customer_id\":1,\"amount\":12.34,\"currency\":\"usd\"}" >/dev/null
                                   BY_ORDER=$(curl -sS "$BASE/payments/order/$PAY_ORDER_ID")
                                   echo "$BY_ORDER" | grep -F "\"order_id\":$PAY_ORDER_ID" >/dev/null
                                   ;;
                                 noti)
-                                  BASE="http://${SERVICE}-canary:8080"
+                                  BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   CREATE_BODY=$(curl -sS -X POST "$BASE/notifications" -H "Content-Type: application/json" -d '{"order_id":7001,"customer_id":1,"message":"dep check","status":"pending"}')
                                   NOTI_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   [ -n "$NOTI_ID" ] || { echo "FAILED: noti dependency create id missing"; exit 1; }
@@ -312,8 +334,19 @@ rollout:
                                   http_req_failed: ['rate<{{ .Values.rollout.analysis.load.errorRate | default 0.1 }}'],
                                 },
                               };
+                              function targetPort(service) {
+                                const ports = { product: 8080, order: 8081, inventory: 8082, noti: 8083, payment: 8084, client: 80 };
+                                return ports[service] || 8080;
+                              }
+                              function healthPath(service) {
+                                if (service === 'client') return '/';
+                                return '/health';
+                              }
                               export default function () {
-                                let res = http.get('http://{{ `{{` }}args.service-name{{ `}}` }}-canary:8080/health');
+                                const service = '{{ `{{` }}args.service-name{{ `}}` }}';
+                                const port = targetPort(service);
+                                const path = healthPath(service);
+                                let res = http.get(`http://${service}-canary:${port}${path}`);
                                 check(res, { 'status is 200': (r) => r.status === 200 });
                                 sleep(0.3);
                               }
