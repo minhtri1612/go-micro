@@ -84,3 +84,304 @@ payment:
       - secretKey: STRIPE_SECRET_KEY
         remoteRef:
           property: STRIPE_SECRET_KEY
+
+rollout:
+  enabled: true
+  strategy: canary
+  analysis:
+    enabled: true
+    prometheusAddress: http://172.18.255.45
+    load:
+      vus: 10
+      duration: 30s
+      errorRate: 0.1
+    thresholds:
+      latencyP95: 0.5
+      latencyCount: 3
+      latencyFailureLimit: 0
+      successRate: 0.82
+      successCount: 5
+      successInitialDelay: 45s
+      successFailureLimit: 3
+    templates:
+      - name: smoke-test
+        args:
+          - name: service-name
+          - name: service-port
+          - name: hostname
+          - name: path-prefix
+        metrics:
+          - name: health-check
+            count: 1
+            failureLimit: 0
+            provider:
+              job:
+                spec:
+                  backoffLimit: 0
+                  template:
+                    spec:
+                      restartPolicy: Never
+                      containers:
+                        - name: smoke
+                          image: curlimages/curl:8.5.0
+                          command:
+                            - sh
+                            - -c
+                            - |
+                              set -e
+                              GATEWAY="traefik.traefik.svc.cluster.local"
+                              HOST="{{ `{{` }}args.hostname{{ `}}` }}"
+                              PREFIX="{{ `{{` }}args.path-prefix{{ `}}` }}"
+                              RESPONSE=$(curl -i -s -X GET -H "Host: $HOST" -H "X-Canary: true" http://$GATEWAY$PREFIX/health)
+                              HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')
+                              if [ "$HTTP_CODE" != "200" ]; then
+                                echo "FAILED: health returned $HTTP_CODE"
+                                exit 1
+                              fi
+                              SERVED_BY=$(echo "$RESPONSE" | grep -i "X-Served-By" | awk '{print $2}' | tr -d '\r')
+                              if [ "$SERVED_BY" != "canary" ]; then
+                                echo "FAILED: request was not served by canary ($SERVED_BY)"
+                                exit 1
+                              fi
+                              echo "PASSED: route gate"
+      - name: business-smoke
+        args:
+          - name: service-name
+        metrics:
+          - name: business-smoke
+            count: 1
+            failureLimit: 0
+            provider:
+              job:
+                spec:
+                  backoffLimit: 0
+                  template:
+                    spec:
+                      restartPolicy: Never
+                      containers:
+                        - name: business-smoke
+                          image: curlimages/curl:8.5.0
+                          command:
+                            - sh
+                            - -c
+                            - |
+                              set -e
+                              SERVICE="{{ `{{` }}args.service-name{{ `}}` }}"
+
+                              case "$SERVICE" in
+                                product)
+                                  BASE="http://${SERVICE}-canary:8080"
+                                  NAME="canary-smoke-${RANDOM}"
+                                  CREATE_BODY=$(curl -sS -X POST "$BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"$NAME\",\"description\":\"canary-smoke\",\"price\":11.11}")
+                                  PRODUCT_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  [ -n "$PRODUCT_ID" ] || { echo "FAILED: product create id missing"; exit 1; }
+                                  ;;
+                                inventory)
+                                  BASE="http://${SERVICE}-canary:8080"
+                                  PID=$((1000 + RANDOM % 9000))
+                                  CREATE_BODY=$(curl -sS -X POST "$BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":20,\"sku\":\"SKU-$PID\",\"location\":\"A1\"}")
+                                  INV_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  [ -n "$INV_ID" ] || { echo "FAILED: inventory create id missing"; exit 1; }
+                                  ;;
+                                order)
+                                  P_BASE="http://product-canary:8080"
+                                  I_BASE="http://inventory-canary:8080"
+                                  O_BASE="http://${SERVICE}-canary:8080"
+                                  PID=$((2000 + RANDOM % 9000))
+                                  curl -sS -X POST "$P_BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}" >/dev/null
+                                  curl -sS -X POST "$I_BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":30,\"sku\":\"OSKU-$PID\",\"location\":\"B2\"}" >/dev/null
+                                  ORDER_BODY=$(curl -sS -X POST "$O_BASE/orders" -H "Content-Type: application/json" -d "{\"customer_id\":1,\"product_id\":$PID,\"quantity\":1,\"total_price\":15.5}")
+                                  ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  [ -n "$ORDER_ID" ] || { echo "FAILED: order create id missing"; exit 1; }
+                                  ;;
+                                payment)
+                                  BASE="http://${SERVICE}-canary:8080"
+                                  PAY_BODY=$(curl -sS -X POST "$BASE/payments/" -H "Content-Type: application/json" -d '{"order_id":9001,"customer_id":1,"amount":10.5,"currency":"usd"}')
+                                  echo "$PAY_BODY" | grep -F "\"payment\"" >/dev/null
+                                  ;;
+                                noti)
+                                  BASE="http://${SERVICE}-canary:8080"
+                                  NOTI_BODY=$(curl -sS -X POST "$BASE/notifications" -H "Content-Type: application/json" -d '{"order_id":9001,"customer_id":1,"message":"canary smoke","status":"pending"}')
+                                  NOTI_ID=$(echo "$NOTI_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  [ -n "$NOTI_ID" ] || { echo "FAILED: notification create id missing"; exit 1; }
+                                  ;;
+                                *)
+                                  echo "SKIP: no business-smoke profile for $SERVICE"
+                                  ;;
+                              esac
+                              echo "PASSED: business smoke for $SERVICE"
+      - name: dependency-check
+        args:
+          - name: service-name
+        metrics:
+          - name: dependency-check
+            count: 1
+            failureLimit: 0
+            provider:
+              job:
+                spec:
+                  backoffLimit: 0
+                  template:
+                    spec:
+                      restartPolicy: Never
+                      containers:
+                        - name: dependency-check
+                          image: curlimages/curl:8.5.0
+                          command:
+                            - sh
+                            - -c
+                            - |
+                              set -e
+                              SERVICE="{{ `{{` }}args.service-name{{ `}}` }}"
+
+                              case "$SERVICE" in
+                                product)
+                                  BASE="http://${SERVICE}-canary:8080"
+                                  LIST_BODY=$(curl -sS "$BASE/products")
+                                  [ "$LIST_BODY" = "[]" ] || echo "$LIST_BODY" | grep -F "\"id\":" >/dev/null
+                                  ;;
+                                inventory)
+                                  BASE="http://${SERVICE}-canary:8080"
+                                  PID=$((3000 + RANDOM % 9000))
+                                  CREATE_BODY=$(curl -sS -X POST "$BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":9,\"sku\":\"DSKU-$PID\",\"location\":\"C3\"}")
+                                  INV_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  [ -n "$INV_ID" ] || { echo "FAILED: inventory dependency create id missing"; exit 1; }
+                                  GET_BODY=$(curl -sS "$BASE/inventory/$INV_ID")
+                                  echo "$GET_BODY" | grep -E "\"id\":[[:space:]]*$INV_ID" >/dev/null
+                                  ;;
+                                order)
+                                  P_BASE="http://product-canary:8080"
+                                  I_BASE="http://inventory-canary:8080"
+                                  O_BASE="http://${SERVICE}-canary:8080"
+                                  PID=$((4000 + RANDOM % 9000))
+                                  curl -sS -X POST "$P_BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"dep-pre-$PID\",\"description\":\"seed\",\"price\":21.5}" >/dev/null
+                                  curl -sS -X POST "$I_BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":25,\"sku\":\"ODSKU-$PID\",\"location\":\"D4\"}" >/dev/null
+                                  ORDER_BODY=$(curl -sS -X POST "$O_BASE/orders" -H "Content-Type: application/json" -d "{\"customer_id\":1,\"product_id\":$PID,\"quantity\":1,\"total_price\":21.5}")
+                                  ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  [ -n "$ORDER_ID" ] || { echo "FAILED: order dependency create id missing"; exit 1; }
+                                  ORDER_GET=$(curl -sS "$O_BASE/orders/$ORDER_ID")
+                                  echo "$ORDER_GET" | grep -E "\"id\":[[:space:]]*$ORDER_ID" >/dev/null
+                                  ;;
+                                payment)
+                                  BASE="http://${SERVICE}-canary:8080"
+                                  PAY_ORDER_ID=$((5000 + RANDOM % 9000))
+                                  curl -sS -X POST "$BASE/payments/" -H "Content-Type: application/json" -d "{\"order_id\":$PAY_ORDER_ID,\"customer_id\":1,\"amount\":12.34,\"currency\":\"usd\"}" >/dev/null
+                                  BY_ORDER=$(curl -sS "$BASE/payments/order/$PAY_ORDER_ID")
+                                  echo "$BY_ORDER" | grep -F "\"order_id\":$PAY_ORDER_ID" >/dev/null
+                                  ;;
+                                noti)
+                                  BASE="http://${SERVICE}-canary:8080"
+                                  CREATE_BODY=$(curl -sS -X POST "$BASE/notifications" -H "Content-Type: application/json" -d '{"order_id":7001,"customer_id":1,"message":"dep check","status":"pending"}')
+                                  NOTI_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  [ -n "$NOTI_ID" ] || { echo "FAILED: noti dependency create id missing"; exit 1; }
+                                  DELIVER=$(curl -sS -X PUT "$BASE/notifications/$NOTI_ID/deliver")
+                                  echo "$DELIVER" | grep -F "delivered" >/dev/null
+                                  ;;
+                                *)
+                                  echo "SKIP: no dependency profile for $SERVICE"
+                                  ;;
+                              esac
+                              echo "PASSED: dependency check for $SERVICE"
+      - name: synthetic-load
+        args:
+          - name: service-name
+        metrics:
+          - name: load-generator-k6
+            count: 1
+            failureLimit: 0
+            provider:
+              job:
+                spec:
+                  backoffLimit: 0
+                  template:
+                    spec:
+                      restartPolicy: Never
+                      containers:
+                        - name: k6
+                          image: grafana/k6:latest
+                          command: ["sh", "-c"]
+                          args:
+                            - |
+                              cat <<EOF | k6 run -
+                              import http from 'k6/http';
+                              import { check, sleep } from 'k6';
+                              export const options = {
+                                vus: {{ .Values.rollout.analysis.load.vus | default 10 }},
+                                duration: '{{ .Values.rollout.analysis.load.duration | default "30s" }}',
+                                thresholds: {
+                                  http_req_failed: ['rate<{{ .Values.rollout.analysis.load.errorRate | default 0.1 }}'],
+                                },
+                              };
+                              export default function () {
+                                let res = http.get('http://{{ `{{` }}args.service-name{{ `}}` }}-canary:8080/health');
+                                check(res, { 'status is 200': (r) => r.status === 200 });
+                                sleep(0.3);
+                              }
+                              EOF
+          - name: latency-p95-check
+            interval: 10s
+            count: 3
+            initialDelay: 10s
+            failureLimit: 0
+            successCondition: 'result[0] < {{ .Values.rollout.analysis.thresholds.latencyP95 | default 0.5 }}'
+            provider:
+              prometheus:
+                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
+                query: |
+                  histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[1m])) by (le))
+      - name: success-rate
+        args:
+          - name: service-name
+        metrics:
+          - name: success-rate
+            interval: 30s
+            count: 5
+            initialDelay: '45s'
+            failureLimit: 3
+            successCondition: 'result[0] >= {{ .Values.rollout.analysis.thresholds.successRate | default 0.82 }}'
+            failureCondition: 'result[0] < {{ .Values.rollout.analysis.thresholds.successRate | default 0.82 }}'
+            provider:
+              prometheus:
+                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
+                query: |
+                  (
+                    1 - (
+                      sum(rate(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*",code=~"5.."}[2m])) or vector(0)
+                      /
+                      (sum(rate(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[2m])) or vector(1))
+                    )
+                  ) or vector(1)
+  canary:
+    steps:
+      - setWeight: 5
+      - analysis:
+          templates:
+            - templateName: '{{ include "template.fullname" . }}-smoke-test'
+          args:
+            - name: service-name
+              value: '{{ include "template.fullname" . }}'
+            - name: service-port
+              value: '{{ .Values.service.port }}'
+            - name: hostname
+              value: '{{ .Values.traefik.hostname }}'
+            - name: path-prefix
+              value: '{{ .Values.traefik.pathPrefix | default "" }}'
+      - analysis:
+          templates:
+            - templateName: '{{ include "template.fullname" . }}-business-smoke'
+          args:
+            - name: service-name
+              value: '{{ include "template.fullname" . }}'
+      - analysis:
+          templates:
+            - templateName: '{{ include "template.fullname" . }}-dependency-check'
+          args:
+            - name: service-name
+              value: '{{ include "template.fullname" . }}'
+      - setWeight: 50
+      - setWeight: 100
+  blueGreen:
+    activeService: ""
+    previewService: ""
+    autoPromotionEnabled: true
+    scaleDownDelaySeconds: 30

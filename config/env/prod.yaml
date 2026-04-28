@@ -16,147 +16,24 @@ ciliumNetworkPolicy:
 
 rollout:
   enabled: true
+  strategy: canary
   analysis:
     enabled: true
     prometheusAddress: http://172.18.255.45
-    templates:
-      # Gate 1: Smoke Test
-      - name: smoke-test
-        args:
-          - name: service-name
-          - name: service-port
-          - name: hostname
-          - name: path-prefix
-        metrics:
-          - name: health-check
-            count: 1
-            failureLimit: 0
-            provider:
-              job:
-                spec:
-                  backoffLimit: 0
-                  template:
-                    spec:
-                      restartPolicy: Never
-                      containers:
-                        - name: smoke
-                          image: curlimages/curl:8.5.0
-                          command:
-                            - sh
-                            - -c
-                            - |
-                              set -e
-                               SVC="{{ `{{` }}args.service-name{{ `}}` }}"
-                               PORT="{{ `{{` }}args.service-port{{ `}}` }}"
-                               echo "🔥 [PROD SMOKE TEST] Critical Routing Validation: $SVC:$PORT"
-                               
-                               GATEWAY="traefik.traefik.svc.cluster.local"
-                               HOST="{{ `{{` }}args.hostname{{ `}}` }}"
-                               PREFIX="{{ `{{` }}args.path-prefix{{ `}}` }}"
-                               echo "🔥 [PROD SMOKE TEST] Critical Routing Validation: $HOST"
-                               
-                               # 1. Gọi API qua Traefik Gateway với Host header
-                               RESPONSE=$(curl -i -s -X GET -H "Host: $HOST" -H "X-Canary: true" http://$GATEWAY$PREFIX/health)
-                              
-                              # 2. Kiểm tra HTTP Status
-                              HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')
-                              echo "📈 Response Status: $HTTP_CODE"
-                              
-                              if [ "$HTTP_CODE" != "200" ]; then
-                                echo "🛑 FATAL ERROR: Production Canary returned $HTTP_CODE! Aborting Rollout immediately."
-                                exit 1
-                              fi
-
-                              # 3. Kiểm tra Header X-Served-By (Phải là 'canary')
-                              SERVED_BY=$(echo "$RESPONSE" | grep -i "X-Served-By" | awk '{print $2}' | tr -d '\r')
-                              echo "🔍 Identity Check: Served-By => $SERVED_BY"
-                              
-                              if [ "$SERVED_BY" != "canary" ]; then
-                                echo "🛑 SECURITY ALERT: Traffic leak detected! Request routed to '$SERVED_BY' instead of Canary."
-                                exit 1
-                              fi
-
-                              echo "✅ SUCCESS: Canary identity verified. Proceeding to Synthetic Load tests."
-
-      # Gate 2: Synthetic Load - k6 warm-up + Prometheus Latency validation
-      # Prod: 50 VUs, P95 < 200ms
-      - name: synthetic-load
-        args:
-          - name: service-name
-        metrics:
-          # 2.1. k6 thợ xây (Load Generator)
-          - name: load-generator-k6
-            count: 1
-            failureLimit: 0
-            provider:
-              job:
-                spec:
-                  backoffLimit: 0
-                  template:
-                    spec:
-                      restartPolicy: Never
-                      containers:
-                        - name: k6
-                          image: grafana/k6:latest
-                          command: ["sh", "-c"]
-                          args:
-                            - |
-                              cat <<EOF | k6 run -
-                              import http from 'k6/http';
-                              import { check, sleep } from 'k6';
-                              export const options = {
-                                vus: 50,
-                                duration: '60s',
-                                thresholds: {
-                                  http_req_failed: ['rate<0.02'],
-                                },
-                              };
-                              export default function () {
-                                let res = http.get('http://{{ `{{` }}args.service-name{{ `}}` }}-canary:8080/health');
-                                check(res, { 'status is 200': (r) => r.status === 200 });
-                                sleep(0.1);
-                              }
-                              EOF
-          # 2.2. Giám sát viên Prometheus (Check P95 Latency cực kỳ khắt khe)
-          - name: latency-p95-check
-            interval: 10s
-            count: 10
-            initialDelay: 10s
-            failureLimit: 1
-            successCondition: result[0] < 0.2  # Prod: P95 < 200ms
-            provider:
-              prometheus:
-                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
-                query: |
-                  histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[1m])) by (le))
-
-      # Gate 3: Success Rate - HTTP error rate thật (prod: ngưỡng 0.95)
-      - name: success-rate
-        args:
-          - name: service-name
-        metrics:
-          - name: success-rate
-            interval: 30s
-            count: 10
-            initialDelay: 60s
-            failureLimit: 1
-            successCondition: result[0] >= 0.95
-            failureCondition: result[0] < 0.95
-            provider:
-              prometheus:
-                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
-                query: |
-                  (
-                    1 - (
-                      sum(rate(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*",code=~"5.."}[2m])) or vector(0)
-                      /
-                      (sum(rate(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[2m])) or vector(1))
-                    )
-                  ) or vector(1)
-  strategy: canary
+    load:
+      vus: 50
+      duration: 60s
+      errorRate: 0.02
+    thresholds:
+      latencyP95: 0.2
+      latencyCount: 10
+      latencyFailureLimit: 1
+      successRate: 0.95
+      successCount: 10
+      successInitialDelay: 60s
+      successFailureLimit: 1
   canary:
     steps:
-      # Wave 1: 5% - Smoke test, fail ngay
       - setWeight: 5
       - analysis:
           templates:
@@ -170,7 +47,18 @@ rollout:
               value: '{{ .Values.traefik.hostname }}'
             - name: path-prefix
               value: '{{ .Values.traefik.pathPrefix | default "" }}'
-      # Wave 2: Synthetic load - warm up + generate metrics
+      - analysis:
+          templates:
+            - templateName: '{{ include "template.fullname" . }}-business-smoke'
+          args:
+            - name: service-name
+              value: '{{ include "template.fullname" . }}'
+      - analysis:
+          templates:
+            - templateName: '{{ include "template.fullname" . }}-dependency-check'
+          args:
+            - name: service-name
+              value: '{{ include "template.fullname" . }}'
       - analysis:
           templates:
             - templateName: '{{ include "template.fullname" . }}-synthetic-load'
@@ -187,16 +75,9 @@ rollout:
           args:
             - name: service-name
               value: '{{ include "template.fullname" . }}'
-      # Wave 4: 50% - On-call confirm thủ công trước khi promote full
       - setWeight: 50
       - pause: {}
-      # Wave 5: Full promote
       - setWeight: 100
-  blueGreen:
-    activeService: ""
-    previewService: ""
-    autoPromotionEnabled: true
-    scaleDownDelaySeconds: 30
 
 product:
   namespace: microservices-prod
