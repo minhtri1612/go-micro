@@ -540,3 +540,6 @@ Da co runbook o muc `6.1` de:
 - lay key dung tu Terraform output
 - tao lai `external-secrets/aws-credentials`
 - force ESO reconcile
+
+
+echo "http://$(docker inspect management-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'):32000"
