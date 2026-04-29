@@ -232,7 +232,7 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "100 * ((sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\"}[5m])) > 0) * (1 - ((sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\", code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\"}[5m])), 1))))",
+              "expr": "100 * (((sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\", code=~\"5..\"}[5m])) or vector(0)) <= bool clamp_min(sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\"}[5m])), 1)) * (1 - ((sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\", code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\"}[5m])), 1))))",
               "refId": "A"
             }
           ],
