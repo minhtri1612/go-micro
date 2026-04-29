@@ -318,8 +318,8 @@ rollout:
                                   ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5}")
                                   ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   [ -n "$ORDER_ID" ] || { echo "FAILED: order dependency create id missing"; echo "ORDER_BODY=$ORDER_BODY"; exit 1; }
-                                  ORDER_GET=$(curl_retry "$O_BASE/orders/$ORDER_ID")
-                                  echo "$ORDER_GET" | grep -E "\"id\":[[:space:]]*$ORDER_ID" >/dev/null
+                                  ORDER_LIST=$(curl_retry "$O_BASE/orders")
+                                  echo "$ORDER_LIST" | grep -E "\"id\":[[:space:]]*$ORDER_ID" >/dev/null
                                   ;;
                                 payment)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
