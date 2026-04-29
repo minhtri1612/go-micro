@@ -120,7 +120,7 @@ client:
         # Frontend client does not expose gin_request_* metrics like Go backend services.
         # Keep canary checks focused on smoke/dependency/k6 in dev.
         successRate: 0
-        successFailureLimit: 10
+        successFailureLimit: 1
 
 podMonitor:
   enabled: true

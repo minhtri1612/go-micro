@@ -120,7 +120,7 @@ client:
       thresholds:
         # Frontend client uses different telemetry than gin-based backend services.
         successRate: 0
-        successFailureLimit: 10
+        successFailureLimit: 1
 
 podMonitor:
   enabled: true
