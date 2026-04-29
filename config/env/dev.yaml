@@ -113,6 +113,15 @@ payment:
       name: go-micro-payment-secrets-dev
     remoteKey: go-micro/dev/app-credentials
 
+client:
+  rollout:
+    analysis:
+      thresholds:
+        # Frontend client does not expose gin_request_* metrics like Go backend services.
+        # Keep canary checks focused on smoke/dependency/k6 in dev.
+        successRate: 0
+        successFailureLimit: 10
+
 podMonitor:
   enabled: true
   interval: 15s

@@ -114,6 +114,14 @@ payment:
       name: go-micro-payment-secrets
     remoteKey: go-micro/prod/app-credentials
 
+client:
+  rollout:
+    analysis:
+      thresholds:
+        # Frontend client uses different telemetry than gin-based backend services.
+        successRate: 0
+        successFailureLimit: 10
+
 podMonitor:
   enabled: true
   interval: 15s
