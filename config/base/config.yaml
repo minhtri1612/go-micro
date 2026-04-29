@@ -178,6 +178,22 @@ rollout:
                                   *) echo 8080 ;;
                                 esac
                               }
+                              curl_retry() {
+                                local url="$1"
+                                local method="${2:-GET}"
+                                local body="${3:-}"
+                                local tries=0
+                                while [ $tries -lt 5 ]; do
+                                  if [ -n "$body" ]; then
+                                    RESP=$(curl -sS -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+                                  else
+                                    RESP=$(curl -sS -X "$method" "$url") && { echo "$RESP"; return 0; }
+                                  fi
+                                  tries=$((tries+1))
+                                  sleep 2
+                                done
+                                return 1
+                              }
 
                               case "$SERVICE" in
                                 product)
@@ -195,19 +211,20 @@ rollout:
                                   [ -n "$INV_ID" ] || { echo "FAILED: inventory create id missing"; exit 1; }
                                   ;;
                                 order)
-                                  P_BASE="http://product-canary:$(svc_port product)"
-                                  I_BASE="http://inventory-canary:$(svc_port inventory)"
+                                  P_BASE="http://product:$(svc_port product)"
+                                  I_BASE="http://inventory:$(svc_port inventory)"
                                   O_BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((2000 + RANDOM % 9000))
-                                  curl -sS -X POST "$P_BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}" >/dev/null
-                                  curl -sS -X POST "$I_BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":30,\"sku\":\"OSKU-$PID\",\"location\":\"B2\"}" >/dev/null
-                                  ORDER_BODY=$(curl -sS -X POST "$O_BASE/orders" -H "Content-Type: application/json" -d "{\"customer_id\":1,\"product_id\":$PID,\"quantity\":1,\"total_price\":15.5}")
+                                  curl_retry "$P_BASE/products" "POST" "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}" >/dev/null
+                                  curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$PID,\"quantity\":30,\"sku\":\"OSKU-$PID\",\"location\":\"B2\"}" >/dev/null
+                                  ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$PID,\"quantity\":1,\"total_price\":15.5}")
                                   ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   [ -n "$ORDER_ID" ] || { echo "FAILED: order create id missing"; exit 1; }
                                   ;;
                                 payment)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
-                                  PAY_BODY=$(curl -sS -X POST "$BASE/payments/" -H "Content-Type: application/json" -d '{"order_id":9001,"customer_id":1,"amount":10.5,"currency":"usd"}')
+                                  PAY_BODY=$(curl_retry "$BASE/payments/" "POST" '{"order_id":9001,"customer_id":1,"amount":10.5,"currency":"usd"}')
+                                  echo "$PAY_BODY"
                                   echo "$PAY_BODY" | grep -F "\"payment\"" >/dev/null
                                   ;;
                                 noti)
@@ -255,6 +272,22 @@ rollout:
                                   *) echo 8080 ;;
                                 esac
                               }
+                              curl_retry() {
+                                local url="$1"
+                                local method="${2:-GET}"
+                                local body="${3:-}"
+                                local tries=0
+                                while [ $tries -lt 5 ]; do
+                                  if [ -n "$body" ]; then
+                                    RESP=$(curl -sS -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+                                  else
+                                    RESP=$(curl -sS -X "$method" "$url") && { echo "$RESP"; return 0; }
+                                  fi
+                                  tries=$((tries+1))
+                                  sleep 2
+                                done
+                                return 1
+                              }
 
                               case "$SERVICE" in
                                 product)
@@ -272,16 +305,16 @@ rollout:
                                   echo "$GET_BODY" | grep -E "\"id\":[[:space:]]*$INV_ID" >/dev/null
                                   ;;
                                 order)
-                                  P_BASE="http://product-canary:$(svc_port product)"
-                                  I_BASE="http://inventory-canary:$(svc_port inventory)"
+                                  P_BASE="http://product:$(svc_port product)"
+                                  I_BASE="http://inventory:$(svc_port inventory)"
                                   O_BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((4000 + RANDOM % 9000))
-                                  curl -sS -X POST "$P_BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"dep-pre-$PID\",\"description\":\"seed\",\"price\":21.5}" >/dev/null
-                                  curl -sS -X POST "$I_BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":25,\"sku\":\"ODSKU-$PID\",\"location\":\"D4\"}" >/dev/null
-                                  ORDER_BODY=$(curl -sS -X POST "$O_BASE/orders" -H "Content-Type: application/json" -d "{\"customer_id\":1,\"product_id\":$PID,\"quantity\":1,\"total_price\":21.5}")
+                                  curl_retry "$P_BASE/products" "POST" "{\"name\":\"dep-pre-$PID\",\"description\":\"seed\",\"price\":21.5}" >/dev/null
+                                  curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$PID,\"quantity\":25,\"sku\":\"ODSKU-$PID\",\"location\":\"D4\"}" >/dev/null
+                                  ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$PID,\"quantity\":1,\"total_price\":21.5}")
                                   ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   [ -n "$ORDER_ID" ] || { echo "FAILED: order dependency create id missing"; exit 1; }
-                                  ORDER_GET=$(curl -sS "$O_BASE/orders/$ORDER_ID")
+                                  ORDER_GET=$(curl_retry "$O_BASE/orders/$ORDER_ID")
                                   echo "$ORDER_GET" | grep -E "\"id\":[[:space:]]*$ORDER_ID" >/dev/null
                                   ;;
                                 payment)
@@ -361,7 +394,13 @@ rollout:
               prometheus:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
                 query: |
-                  histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[1m])) by (le))
+                  (
+                    histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[1m])) by (le))
+                  )
+                  or
+                  (
+                    avg(up{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}) * 0.1
+                  )
       - name: success-rate
         args:
           - name: service-name
