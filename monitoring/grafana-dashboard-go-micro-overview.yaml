@@ -110,7 +110,7 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum(rate(gin_request_total{cluster=~\"$cluster\", pod=~\"$service-.*\"}[1m])) by (pod)",
+              "expr": "sum(rate(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\"}[1m])) by (pod)",
               "legendFormat": "{{pod}}",
               "range": true,
               "refId": "A"
@@ -169,7 +169,7 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{cluster=~\"$cluster\", pod=~\"$service-.*\"}[1m])) by (le,pod))",
+              "expr": "histogram_quantile(0.95, sum(increase(gin_request_duration_bucket{cluster=~\"$cluster\", pod=~\"($service)-.*\"}[5m])) by (le,pod))",
               "legendFormat": "{{pod}}",
               "range": true,
               "refId": "A"
@@ -232,7 +232,7 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "100 * (1 - (sum(rate(gin_request_total{cluster=~\"$cluster\", pod=~\"$service-.*\", code=~\"5..\"}[2m])) / sum(rate(gin_request_total{cluster=~\"$cluster\", pod=~\"$service-.*\"}[2m]))))",
+              "expr": "100 * ((sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\"}[5m])) > 0) * (1 - ((sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\", code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(increase(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\"}[5m])), 1))))",
               "refId": "A"
             }
           ],
@@ -289,13 +289,13 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum(rate(gin_uri_request_total{cluster=~\"$cluster\", pod=~\"$service-.*\", code!~\"2..\"}[1m])) by (pod, uri, code)",
+              "expr": "sum(rate(gin_request_total{cluster=~\"$cluster\", pod=~\"($service)-.*\", code!~\"2..\"}[1m])) by (pod, code)",
               "format": "table",
               "instant": true,
               "refId": "A"
             }
           ],
-          "title": "Top Error Routes",
+          "title": "Error RPS By Pod/Code",
           "transformations": [
             {
               "id": "organize",
@@ -305,9 +305,8 @@ data:
                 },
                 "indexByName": {
                   "Value": 3,
-                  "code": 2,
-                  "pod": 0,
-                  "uri": 1
+                  "code": 1,
+                  "pod": 0
                 },
                 "renameByName": {
                   "Value": "rps_error"
@@ -363,7 +362,7 @@ data:
         ]
       },
       "time": {
-        "from": "now-15m",
+        "from": "now-1h",
         "to": "now"
       },
       "timepicker": {},
