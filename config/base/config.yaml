@@ -375,14 +375,15 @@ rollout:
                                 const ports = { product: 8080, order: 8081, inventory: 8082, noti: 8083, payment: 8084, client: 80 };
                                 return ports[service] || 8080;
                               }
-                              function healthPath(service) {
+                              function probePath(service) {
                                 if (service === 'client') return '/';
+                                if (service === 'order') return '/orders';
                                 return '/health';
                               }
                               export default function () {
                                 const service = '{{ `{{` }}args.service-name{{ `}}` }}';
                                 const port = targetPort(service);
-                                const path = healthPath(service);
+                                const path = probePath(service);
                                 let res = http.get(`http://${service}-canary:${port}${path}`);
                                 check(res, { 'status is 200': (r) => r.status === 200 });
                                 sleep(0.3);
