@@ -361,7 +361,7 @@ rollout:
                           command: ["sh", "-c"]
                           args:
                             - |
-                              cat <<EOF | k6 run -
+                              cat <<'EOF' | k6 run -
                               import http from 'k6/http';
                               import { check, sleep } from 'k6';
                               export const options = {
@@ -369,7 +369,7 @@ rollout:
                                 duration: '{{ .Values.rollout.analysis.load.duration | default "30s" }}',
                                 thresholds: {
                                   http_req_failed: ['rate<{{ .Values.rollout.analysis.load.errorRate | default 0.1 }}'],
-                                  http_req_duration: ['p(95)<2s'],
+                                  http_req_duration: ['p(95)<2000'],
                                 },
                               };
                               function targetPort(service) {
