@@ -392,9 +392,9 @@ rollout:
                               EOF
           - name: latency-p95-check
             interval: 15s
-            count: {{ .Values.rollout.analysis.thresholds.latencyCount | default 3 }}
+            count: '{{ .Values.rollout.analysis.thresholds.latencyCount | default 3 }}'
             initialDelay: 20s
-            failureLimit: {{ .Values.rollout.analysis.thresholds.latencyFailureLimit | default 0 }}
+            failureLimit: '{{ .Values.rollout.analysis.thresholds.latencyFailureLimit | default 0 }}'
             successCondition: 'result[0] == 999 || result[0] < {{ .Values.rollout.analysis.thresholds.latencyP95 | default 0.5 }}'
             provider:
               prometheus:
