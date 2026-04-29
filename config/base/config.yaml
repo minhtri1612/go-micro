@@ -369,6 +369,7 @@ rollout:
                                 duration: '{{ .Values.rollout.analysis.load.duration | default "30s" }}',
                                 thresholds: {
                                   http_req_failed: ['rate<{{ .Values.rollout.analysis.load.errorRate | default 0.1 }}'],
+                                  http_req_duration: ['p(95)<2s'],
                                 },
                               };
                               function targetPort(service) {
@@ -394,7 +395,7 @@ rollout:
             count: {{ .Values.rollout.analysis.thresholds.latencyCount | default 3 }}
             initialDelay: 20s
             failureLimit: {{ .Values.rollout.analysis.thresholds.latencyFailureLimit | default 0 }}
-            successCondition: 'result[0] < {{ .Values.rollout.analysis.thresholds.latencyP95 | default 0.5 }}'
+            successCondition: 'result[0] == 999 || result[0] < {{ .Values.rollout.analysis.thresholds.latencyP95 | default 0.5 }}'
             provider:
               prometheus:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
@@ -403,7 +404,7 @@ rollout:
                     histogram_quantile(0.95, sum(increase(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[5m])) by (le))
                     unless
                     sum(increase(gin_request_duration_count{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[5m])) < 1
-                  ) or vector(0)
+                  ) or vector(999)
       - name: success-rate
         args:
           - name: service-name
