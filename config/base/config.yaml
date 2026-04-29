@@ -390,9 +390,9 @@ rollout:
                               }
                               EOF
           - name: latency-p95-check
-            interval: 10s
+            interval: 15s
             count: 3
-            initialDelay: 10s
+            initialDelay: 20s
             failureLimit: 0
             successCondition: 'result[0] < {{ .Values.rollout.analysis.thresholds.latencyP95 | default 0.5 }}'
             provider:
@@ -400,7 +400,9 @@ rollout:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
                 query: |
                   (
-                    histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[1m])) by (le))
+                    histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[2m])) by (le))
+                    unless
+                    sum(rate(gin_request_duration_count{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[2m])) == 0
                   ) or vector(0)
       - name: success-rate
         args:
