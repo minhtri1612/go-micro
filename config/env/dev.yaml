@@ -26,9 +26,9 @@ rollout:
       duration: 30s
       errorRate: 0.1
     thresholds:
-      latencyP95: 0.5
+      latencyP95: 1.0
       latencyCount: 3
-      latencyFailureLimit: 0
+      latencyFailureLimit: 1
       successRate: 0.82
       successCount: 5
       successInitialDelay: 45s

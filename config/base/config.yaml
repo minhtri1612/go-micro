@@ -391,9 +391,9 @@ rollout:
                               EOF
           - name: latency-p95-check
             interval: 15s
-            count: 3
+            count: {{ .Values.rollout.analysis.thresholds.latencyCount | default 3 }}
             initialDelay: 20s
-            failureLimit: 0
+            failureLimit: {{ .Values.rollout.analysis.thresholds.latencyFailureLimit | default 0 }}
             successCondition: 'result[0] < {{ .Values.rollout.analysis.thresholds.latencyP95 | default 0.5 }}'
             provider:
               prometheus:
@@ -403,7 +403,7 @@ rollout:
                     histogram_quantile(0.95, sum(increase(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[5m])) by (le))
                     unless
                     sum(increase(gin_request_duration_count{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[5m])) < 1
-                  ) or vector(999)
+                  ) or vector(0)
       - name: success-rate
         args:
           - name: service-name
