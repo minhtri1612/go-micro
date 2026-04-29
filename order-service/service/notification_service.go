@@ -25,7 +25,7 @@ type NotificationService struct {
 func NewNotificationService() *NotificationService {
 	baseURL := os.Getenv("NOTIFICATION_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://notification-service:8083" // Docker default
+		baseURL = "http://noti:8083" // Kubernetes service DNS default
 	}
 
 	// Create circuit breaker

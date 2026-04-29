@@ -52,6 +52,15 @@ podMonitor:
 
 useExternalSecrets: true
 workloadKind: rollout
+extraEnv:
+  - name: PRODUCT_SERVICE_URL
+    value: http://product:8080
+  - name: INVENTORY_SERVICE_URL
+    value: http://inventory:8082
+  - name: PAYMENT_SERVICE_URL
+    value: http://payment:8084
+  - name: NOTIFICATION_SERVICE_URL
+    value: http://noti:8083
 
 routing:
   provider: traefik

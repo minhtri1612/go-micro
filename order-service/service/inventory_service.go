@@ -25,7 +25,7 @@ type InventoryService struct {
 func NewInventoryService() *InventoryService {
 	baseURL := os.Getenv("INVENTORY_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://inventory-service:8082" // Docker default
+		baseURL = "http://inventory:8082" // Kubernetes service DNS default
 	}
 
 	// Create circuit breaker

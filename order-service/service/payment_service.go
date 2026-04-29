@@ -46,7 +46,7 @@ type PaymentResponse struct {
 
 // NewPaymentService creates a new payment service instance
 func NewPaymentService() *PaymentService {
-	baseURL := getEnv("PAYMENT_SERVICE_URL", "http://payment-service:8084")
+	baseURL := getEnv("PAYMENT_SERVICE_URL", "http://payment:8084")
 	
 	// Circuit breaker settings
 	settings := gobreaker.Settings{

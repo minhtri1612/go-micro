@@ -156,7 +156,7 @@ func NewOrderController(db *sql.DB) *OrderController {
 func getProductPrice(productID int) (float64, error) {
 	baseURL := os.Getenv("PRODUCT_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://product-service:8080"
+		baseURL = "http://product:8080"
 	}
 	url := fmt.Sprintf("%s/products/%d", baseURL, productID)
 
@@ -183,7 +183,7 @@ func getProductPrice(productID int) (float64, error) {
 func checkInventoryAvailable(productID int, quantity int) (bool, error) {
 	baseURL := os.Getenv("INVENTORY_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://inventory-service:8082"
+		baseURL = "http://inventory:8082"
 	}
 
 	payload := model.InventoryCheck{ProductID: productID, Quantity: quantity}
