@@ -400,10 +400,10 @@ rollout:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
                 query: |
                   (
-                    histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[2m])) by (le))
+                    histogram_quantile(0.95, sum(increase(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[5m])) by (le))
                     unless
-                    sum(rate(gin_request_duration_count{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[2m])) == 0
-                  ) or vector(0)
+                    sum(increase(gin_request_duration_count{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[5m])) < 1
+                  ) or vector(999)
       - name: success-rate
         args:
           - name: service-name
@@ -421,11 +421,13 @@ rollout:
                 query: |
                   (
                     1 - (
-                      sum(rate(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*",code=~"5.."}[2m])) or vector(0)
+                      sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*",code=~"5.."}[5m])) or vector(0)
                       /
-                      (sum(rate(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[2m])) or vector(1))
+                      (sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[5m])) or vector(1))
                     )
-                  ) or vector(1)
+                    unless
+                    sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[5m])) < 1
+                  ) or vector(0)
   canary:
     steps:
       - setWeight: 5
