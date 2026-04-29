@@ -13,11 +13,6 @@ echo "Building and pushing images to Docker Hub..."
 echo "Repository: $DOCKER_REPO"
 echo "Tag: $TAG"
 
-# Build and push API Gateway
-echo "Building api-gateway..."
-docker build -t $DOCKER_REPO:api-gateway-$TAG -f ./api-gateway/Dockerfile .
-docker push $DOCKER_REPO:api-gateway-$TAG
-
 # Build and push Product Service
 echo "Building product-service..."
 docker build -t $DOCKER_REPO:product-service-$TAG -f ./product-service/Dockerfile .
