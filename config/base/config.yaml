@@ -400,11 +400,7 @@ rollout:
                 query: |
                   (
                     histogram_quantile(0.95, sum(rate(gin_request_duration_bucket{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}[1m])) by (le))
-                  )
-                  or
-                  (
-                    avg(up{pod=~'{{ `{{` }}args.service-name{{ `}}` }}-.*'}) * 0.1
-                  )
+                  ) or vector(0)
       - name: success-rate
         args:
           - name: service-name
