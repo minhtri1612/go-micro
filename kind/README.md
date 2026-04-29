@@ -541,5 +541,45 @@ Da co runbook o muc `6.1` de:
 - tao lai `external-secrets/aws-credentials`
 - force ESO reconcile
 
+### 8.6 Recovery ArgoCD `ComparisonError` sau reboot
+
+Trieu chung thuong gap:
+
+- `argocd app list` thay nhieu app `STATUS: Unknown`, `CONDITIONS: ComparisonError`
+- `argocd app get <app>` co loi dang `dial tcp <argocd-repo-server-ip>:8081 ... operation not permitted`
+- `kubectl -n argocd get endpoints argocd-repo-server` ra rong
+
+Nguyen nhan thuong gap:
+
+- `argocd-repo-server`/`argocd-application-controller` chua healthy hoan toan sau reboot
+- Bootstrap tiep qua som khi ArgoCD core chua san sang
+
+Preflight bat buoc (chay truoc khi bootstrap/sync hang loat):
+
+```bash
+kubectl --context kind-management -n argocd get pods -o wide
+kubectl --context kind-management -n argocd get endpoints argocd-repo-server -o wide
+```
+
+Chi tiep tuc neu:
+
+- `argocd-repo-server` va `argocd-application-controller` la `Ready`
+- `argocd-repo-server` co endpoint (KHONG rong)
+
+Lenh recovery nhanh (copy/chay):
+
+```bash
+kubectl --context kind-management -n argocd rollout restart deploy/argocd-repo-server
+kubectl --context kind-management -n argocd rollout restart statefulset/argocd-application-controller
+
+kubectl --context kind-management -n argocd rollout status deploy/argocd-repo-server --timeout=180s
+kubectl --context kind-management -n argocd rollout status statefulset/argocd-application-controller --timeout=180s
+kubectl --context kind-management -n argocd get endpoints argocd-repo-server -o wide
+
+# refresh tat ca app de clear ComparisonError cache
+argocd --grpc-web app list -o name | xargs -n1 argocd --grpc-web app get --refresh >/tmp/argocd-refresh.log 2>&1 || true
+argocd --grpc-web app list
+```
+
 
 echo "http://$(docker inspect management-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'):32000"
