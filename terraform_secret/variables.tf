@@ -27,8 +27,12 @@ variable "db_password" {
 
 variable "stripe_secret_key" {
   type        = string
-  default     = "sk_test_dummy_key_for_development"
-  description = "Stripe API secret key used by payment service."
+  sensitive   = true
+  description = "Stripe secret key (sk_test_... or sk_live_...). Written into each env's app-credentials secret in AWS; External Secrets syncs to the cluster. No default — set in terraform.tfvars (gitignored)."
+  validation {
+    condition     = can(regex("^sk_(test|live)_", var.stripe_secret_key))
+    error_message = "stripe_secret_key must start with sk_test_ or sk_live_."
+  }
 }
 
 variable "app_credentials_name_suffix_by_env" {

@@ -15,12 +15,20 @@ This stack creates one JSON secret per environment in AWS Secrets Manager:
 - `INVENTORY_DB_NAME`
 - `NOTIFICATION_DB_NAME`
 - `PAYMENT_DB_NAME`
+- `STRIPE_SECRET_KEY` (from Stripe Dashboard; never commit real values)
+
+## Stripe keys
+
+Payment service reads `STRIPE_SECRET_KEY` from this JSON. Terraform **does not** ship a dummy default: set `stripe_secret_key` in `terraform.tfvars` (copy from `terraform.tfvars.example`) with a real `sk_test_*` or `sk_live_*` from the Stripe Dashboard. Keep `terraform.tfvars` out of git (see repo `.gitignore`).
+
+After `terraform apply`, AWS Secrets Manager holds the updated JSON. External Secrets refreshes on its interval (default 1h in Helm values); to pick up a key change faster, refresh the `ExternalSecret` or shorten `refreshInterval` in your overlay.
 
 ## Run
 
 ```bash
 cd terraform_secret
 cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars: set stripe_secret_key
 terraform init
 terraform apply
 terraform output app_credentials_secret_names

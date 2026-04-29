@@ -215,9 +215,11 @@ rollout:
                                   I_BASE="http://inventory:$(svc_port inventory)"
                                   O_BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((2000 + RANDOM % 9000))
-                                  curl_retry "$P_BASE/products" "POST" "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}" >/dev/null
-                                  curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$PID,\"quantity\":30,\"sku\":\"OSKU-$PID\",\"location\":\"B2\"}" >/dev/null
-                                  ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$PID,\"quantity\":1,\"total_price\":15.5}")
+                                  P_CREATE=$(curl_retry "$P_BASE/products" "POST" "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}")
+                                  REAL_PID=$(echo "$P_CREATE" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  [ -n "$REAL_PID" ] || { echo "FAILED: order seed product id missing"; exit 1; }
+                                  curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$REAL_PID,\"quantity\":30,\"sku\":\"OSKU-$PID\",\"location\":\"B2\"}" >/dev/null
+                                  ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":15.5}")
                                   ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   [ -n "$ORDER_ID" ] || { echo "FAILED: order create id missing"; exit 1; }
                                   ;;
@@ -309,9 +311,11 @@ rollout:
                                   I_BASE="http://inventory:$(svc_port inventory)"
                                   O_BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((4000 + RANDOM % 9000))
-                                  curl_retry "$P_BASE/products" "POST" "{\"name\":\"dep-pre-$PID\",\"description\":\"seed\",\"price\":21.5}" >/dev/null
-                                  curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$PID,\"quantity\":25,\"sku\":\"ODSKU-$PID\",\"location\":\"D4\"}" >/dev/null
-                                  ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$PID,\"quantity\":1,\"total_price\":21.5}")
+                                  P_CREATE=$(curl_retry "$P_BASE/products" "POST" "{\"name\":\"dep-pre-$PID\",\"description\":\"seed\",\"price\":21.5}")
+                                  REAL_PID=$(echo "$P_CREATE" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  [ -n "$REAL_PID" ] || { echo "FAILED: order dependency seed product id missing"; exit 1; }
+                                  curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$REAL_PID,\"quantity\":25,\"sku\":\"ODSKU-$PID\",\"location\":\"D4\"}" >/dev/null
+                                  ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5}")
                                   ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   [ -n "$ORDER_ID" ] || { echo "FAILED: order dependency create id missing"; exit 1; }
                                   ORDER_GET=$(curl_retry "$O_BASE/orders/$ORDER_ID")

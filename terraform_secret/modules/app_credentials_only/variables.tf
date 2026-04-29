@@ -25,6 +25,6 @@ variable "app_credentials_name_suffix" {
 
 variable "stripe_secret_key" {
   type        = string
-  description = "Stripe API secret key injected to payment service."
-  default     = "sk_test_dummy_key_for_development"
+  sensitive   = true
+  description = "Stripe API secret key injected into app-credentials JSON for this environment."
 }
