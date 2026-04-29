@@ -420,13 +420,17 @@ rollout:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
                 query: |
                   (
-                    1 - (
-                      sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*",code=~"5.."}[5m])) or vector(0)
-                      /
-                      (sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[5m])) or vector(1))
+                    (
+                      sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[5m])) > 0
                     )
-                    unless
-                    sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[5m])) < 1
+                    *
+                    (
+                      1 - (
+                        (sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*",code=~"5.."}[5m])) or vector(0))
+                        /
+                        clamp_min(sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[5m])), 1)
+                      )
+                    )
                   ) or vector(0)
   canary:
     steps:
