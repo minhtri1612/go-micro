@@ -50,9 +50,9 @@ controller:
       enabled: false
 
   # Pin plugin set để tránh mismatch dependency với Jenkins core.
-  installLatestPlugins: false
+  installLatestPlugins: true
   installLatestSpecifiedPlugins: false
-  initializeOnce: true
+  initializeOnce: false
   installPlugins:
     - kubernetes:4392.v19cea_fdb_5913
     - workflow-aggregator:608.v67378e9d3db_1
