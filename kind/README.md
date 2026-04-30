@@ -79,35 +79,6 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 argocd --grpc-web account get-user-info
 ```
 
----
-
-## 2.1) Install Jenkins on management (GitOps bang YAML)
-
-Neu ban dung Jenkins de build/push image va bump tag `env/*.yaml`, nen cai ngay sau Argo CD
-(truoc bootstrap app). Khuyen nghi dung Argo CD Application YAML (`argocd/bootstrap/22-jenkins-management.yaml`).
-
-```bash
-kubectl config use-context kind-management
-
-kubectl apply -f argocd/bootstrap/22-jenkins-management.yaml
-argocd --grpc-web app sync jenkins-management
-argocd --grpc-web app wait jenkins-management --health --sync --timeout 600
-kubectl --context kind-management -n jenkins get svc jenkins
-# expected EXTERNAL-IP: 172.18.255.49
-```
-
-Jenkins URL:
-
-```bash
-echo "http://172.18.255.49:8080"
-```
-
-Hoac dung port-forward:
-
-```bash
-kubectl -n jenkins port-forward svc/jenkins 8090:8080
-# -> http://localhost:8090
-```
 
 ---
 
