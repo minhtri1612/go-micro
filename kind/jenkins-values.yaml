@@ -28,13 +28,12 @@ controller:
     - git:latest
     - credentials-binding:latest
     - pipeline-stage-view:latest
-    - blueocean:latest
     - docker-workflow:latest
     - github:latest
     - pipeline-utility-steps:latest
 
-  # Tắt setup wizard để dùng ngay
-  installLatestPlugins: true
+  # Tắt tự nâng plugin latest để giảm thời gian cài và tránh timeout do update center
+  installLatestPlugins: false
 
   # Admin credentials (đổi lại sau khi cài)
   admin:
