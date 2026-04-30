@@ -36,6 +36,12 @@ controller:
   scriptApproval:
     - "method groovy.json.JsonOutput toJson java.lang.Object"
 
+  # Jenkins 2.528+ + chart 5.8.110: default crumbIssuer config có thể sinh field JCasC
+  # không tương thích (excludeClientIPFromCrumb). Ép disable để tránh CrashLoop.
+  csrf:
+    defaultCrumbIssuer:
+      enabled: false
+
 agent:
   enabled: true
   # Mount docker.sock từ host để agent chạy docker build được
