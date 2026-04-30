@@ -490,7 +490,22 @@ for ctx in kind-management kind-dev kind-staging kind-prod; do
 done
 ```
 
-### 8.2 Tai sao "chay script roi" van sai?
+### 8.2 Vong lap thuc te: script → sync → verify (thuong 3–4 lan moi full xanh)
+
+Tren Kind, ClusterMesh/KVStoreMesh **khong phai lan dau la tat ca context deu tich xanh**. Luong dien hinh:
+
+1. `./scripts/kind-clustermesh-sync-spoke-from-hub.sh` — gop CA, patch secret, restart `clustermesh-apiserver` + DaemonSet `cilium`.
+2. `argocd app sync` bon app `cilium-management`, `cilium-dev`, `cilium-staging`, `cilium-prod` — GitOps khop repo Git (manifest Helm tai ap dung lai).
+3. Verify — `cilium clustermesh status` tren ca bon context (nhu `8.1`).
+
+Neu van con `0/1 connected`, loi kieu **remote cluster configuration required but not found**, hoac chi mot vai spoke/management da ket noi: **lap lai (1) → (2) → (3)**. **Ba bon vong** cho den khi moi dong **configured va connected** la **binh thuong**, vi:
+
+- Cac cluster bat tay KVStoreMesh **khong dong thoi**; sau moi lan restart can thoi gian converge.
+- Sync Argo co the **tai hop thuc** secret/cert so voi bundle CA ma script vua merge tren cluster — can them vong script de dong bo lai, roi sync lai.
+
+Giam so vong lap: sau khi script ghi `cilium/clustermesh-management-peer.yaml`, **commit + push** len nhanh ma Argo dung de giam keo co Git vs runtime; chi sync khi core Argo san sang (`argocd-repo-server` co endpoint — xem `8.7`).
+
+### 8.3 Tai sao "chay script roi" van sai?
 
 Thuong la do chay script khong dung bo cua repo hien tai, hoac chay script nhung khong sync lai ArgoCD theo thu tu.
 Voi `go-micro`, dung dung bo script sau:
@@ -499,7 +514,7 @@ Voi `go-micro`, dung dung bo script sau:
 chmod +x scripts/kind-clustermesh-peer-ip.sh scripts/kind-clustermesh-sync-spoke-from-hub.sh
 ```
 
-### 8.3 Khi nao chi can `argocd app sync`?
+### 8.4 Khi nao chi can `argocd app sync`?
 
 Chi can sync khi ban da sua Git va khong co cert drift:
 
@@ -510,7 +525,7 @@ argocd app sync cilium-staging --grpc-web
 argocd app sync cilium-prod --grpc-web
 ```
 
-### 8.4 Khi nao phai chay recovery script?
+### 8.5 Khi nao phai chay recovery script?
 
 Chay recovery neu thay dau hieu:
 
@@ -528,7 +543,7 @@ argocd app sync cilium-staging --grpc-web
 argocd app sync cilium-prod --grpc-web
 ```
 
-### 8.5 Secrets AWS sai co can ghi vao README khong?
+### 8.6 Secrets AWS sai co can ghi vao README khong?
 
 Co. Do la loi hay gap nhat lam ESO fail:
 
@@ -541,7 +556,7 @@ Da co runbook o muc `6.1` de:
 - tao lai `external-secrets/aws-credentials`
 - force ESO reconcile
 
-### 8.6 Recovery ArgoCD `ComparisonError` sau reboot
+### 8.7 Recovery ArgoCD `ComparisonError` sau reboot
 
 Trieu chung thuong gap:
 
@@ -580,6 +595,3 @@ kubectl --context kind-management -n argocd get endpoints argocd-repo-server -o 
 argocd --grpc-web app list -o name | xargs -n1 argocd --grpc-web app get --refresh >/tmp/argocd-refresh.log 2>&1 || true
 argocd --grpc-web app list
 ```
-
-
-echo "http://$(docker inspect management-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'):32000"
