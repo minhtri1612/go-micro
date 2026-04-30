@@ -495,20 +495,33 @@ for ctx in kind-management kind-dev kind-staging kind-prod; do
 done
 ```
 
-### 8.2 Vong lap thuc te: script → sync → verify (thuong 3–4 lan moi full xanh)
+### 8.2 Thu tu on dinh de tranh race: sync → script → verify
 
-Tren Kind, ClusterMesh/KVStoreMesh **khong phai lan dau la tat ca context deu tich xanh**. Luong dien hinh:
+Dung thu tu nay de giam toi da race condition (Argo reconcile vs runtime cert patch):
 
-1. `./scripts/kind-clustermesh-sync-spoke-from-hub.sh` — gop CA, patch secret, restart `clustermesh-apiserver` + DaemonSet `cilium`.
-2. `argocd app sync` bon app `cilium-management`, `cilium-dev`, `cilium-staging`, `cilium-prod` — GitOps khop repo Git (manifest Helm tai ap dung lai).
-3. Verify — `cilium clustermesh status` tren ca bon context (nhu `8.1`).
+```bash
+# 1) Sync Cilium apps truoc (dua runtime ve dung Git)
+argocd app sync cilium-management --grpc-web
+argocd app sync cilium-dev --grpc-web
+argocd app sync cilium-staging --grpc-web
+argocd app sync cilium-prod --grpc-web
+argocd app wait cilium-management --health --sync --timeout 600 --grpc-web
+argocd app wait cilium-dev --health --sync --timeout 600 --grpc-web
+argocd app wait cilium-staging --health --sync --timeout 600 --grpc-web
+argocd app wait cilium-prod --health --sync --timeout 600 --grpc-web
 
-Neu van con `0/1 connected`, loi kieu **remote cluster configuration required but not found**, hoac chi mot vai spoke/management da ket noi: **lap lai (1) → (2) → (3)**. **Ba bon vong** cho den khi moi dong **configured va connected** la **binh thuong**, vi:
+# 2) Chay recovery script (CA bundle + restart)
+cd ~/Downloads/go-micro
+./scripts/kind-clustermesh-sync-spoke-from-hub.sh
 
-- Cac cluster bat tay KVStoreMesh **khong dong thoi**; sau moi lan restart can thoi gian converge.
-- Sync Argo co the **tai hop thuc** secret/cert so voi bundle CA ma script vua merge tren cluster — can them vong script de dong bo lai, roi sync lai.
+# 3) Verify
+for ctx in kind-management kind-dev kind-staging kind-prod; do
+  echo "=== $ctx ==="
+  cilium clustermesh status --context "$ctx"
+done
+```
 
-Giam so vong lap: sau khi script ghi `cilium/clustermesh-management-peer.yaml`, **commit + push** len nhanh ma Argo dung de giam keo co Git vs runtime; chi sync khi core Argo san sang (`argocd-repo-server` co endpoint — xem `8.7`).
+Neu van con loi sau buoc verify, KHONG restart tung context ngau nhien. Xu ly theo `8.3` / `8.8`.
 
 ### 8.3 Tai sao "chay script roi" van sai?
 
@@ -518,6 +531,8 @@ Voi `go-micro`, dung dung bo script sau:
 ```bash
 chmod +x scripts/kind-clustermesh-peer-ip.sh scripts/kind-clustermesh-sync-spoke-from-hub.sh
 ```
+
+Luu y: script nay dong bo CA/cert, nhung neu endpoint peer trong secret `cilium-clustermesh` bi drift thi can them buoc fix endpoint (xem `8.8`).
 
 ### 8.4 Khi nao chi can `argocd app sync`?
 
@@ -605,3 +620,54 @@ Clear cache `ComparisonError`:
 argocd --grpc-web app list -o name | xargs -n1 argocd --grpc-web app get --hard-refresh >/tmp/argocd-refresh.log 2>&1 || true
 argocd --grpc-web app list
 ```
+
+### 8.8 Fix dut diem khi `KVStoreMesh connected` nhung `cilium-agent not connected`
+
+Trieu chung:
+
+- `cilium clustermesh status` tren spoke/management bao:
+  - `KVStoreMesh ... connected`
+  - nhung `cilium-xxxxx is not connected ... remote cluster configuration required but not found`
+    hoac `Waiting for initial connection to be established`
+
+Nguyen nhan goc hay gap:
+
+- Secret `cilium-kvstoremesh` co endpoint remote DUNG (`https://dev.mesh.cilium.io:2379`, ...)
+- Nhung secret `cilium-clustermesh` lai bi endpoint local (`https://clustermesh-apiserver.kube-system.svc:2379`)
+- Cilium agent doc `cilium-clustermesh` -> quay vao local endpoint -> ket noi peer that bi ket
+
+Fix runtime ngay (khong can hardcode cert/key vao Git):
+
+```bash
+for ctx in kind-management kind-dev kind-staging kind-prod; do
+  echo "=== $ctx ==="
+  keys=$(kubectl --context "$ctx" -n kube-system get secret cilium-kvstoremesh -o go-template='{{range $k,$v := .data}}{{printf "%s\n" $k}}{{end}}')
+  while IFS= read -r k; do
+    [ -z "$k" ] && continue
+    v=$(kubectl --context "$ctx" -n kube-system get secret cilium-kvstoremesh -o jsonpath="{.data.$k}")
+    kubectl --context "$ctx" -n kube-system patch secret cilium-clustermesh --type merge -p "{\"data\":{\"$k\":\"$v\"}}"
+  done <<< "$keys"
+done
+
+for ctx in kind-management kind-dev kind-staging kind-prod; do
+  kubectl --context "$ctx" -n kube-system rollout restart ds/cilium
+  kubectl --context "$ctx" -n kube-system rollout status ds/cilium --timeout=300s
+done
+```
+
+Verify lai:
+
+```bash
+for ctx in kind-management kind-dev kind-staging kind-prod; do
+  echo "=== $ctx ==="
+  cilium clustermesh status --context "$ctx"
+done
+```
+
+Ky vong ket qua:
+
+- management: `3/3 configured, 3/3 connected`
+- dev/staging/prod: `1/1 configured, 1/1 connected`
+
+
+echo "http://$(docker inspect management-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'):32000"
