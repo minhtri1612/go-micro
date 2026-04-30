@@ -81,23 +81,17 @@ argocd --grpc-web account get-user-info
 
 ---
 
-## 2.1) Install Jenkins on management (nen lam som)
+## 2.1) Install Jenkins on management (GitOps bang YAML)
 
 Neu ban dung Jenkins de build/push image va bump tag `env/*.yaml`, nen cai ngay sau Argo CD
-(truoc bootstrap app) de tranh quen setup CI.
+(truoc bootstrap app). Khuyen nghi dung Argo CD Application YAML (`argocd/bootstrap/22-jenkins-management.yaml`).
 
 ```bash
 kubectl config use-context kind-management
 
-helm repo add jenkins https://charts.jenkins.io 2>/dev/null || true
-helm repo update
-
-helm upgrade --install jenkins jenkins/jenkins \
-  -n jenkins --create-namespace \
-  -f kind/jenkins-values.yaml \
-  --wait --timeout 10m
-
-kubectl -n jenkins wait --for=condition=Ready pods --all --timeout=300s
+kubectl apply -f argocd/bootstrap/22-jenkins-management.yaml
+argocd --grpc-web app sync jenkins-management
+argocd --grpc-web app wait jenkins-management --health --sync --timeout 600
 kubectl --context kind-management -n jenkins get svc jenkins
 # expected EXTERNAL-IP: 172.18.255.49
 ```
@@ -170,6 +164,7 @@ argocd repo add https://argoproj.github.io/argo-helm --type helm --name argo-hel
 argocd repo add https://metallb.github.io/metallb --type helm --name metallb || true
 argocd repo add https://helm.cilium.io/ --type helm --name cilium || true
 argocd repo add https://helm.traefik.io/traefik --type helm --name traefik || true
+argocd repo add https://charts.jenkins.io --type helm --name jenkins || true
 
 # projects first
 kubectl apply -f argocd/bootstrap/01-projects.yaml
@@ -251,6 +246,11 @@ argocd --grpc-web app wait cilium-management --health --sync --timeout 300
 argocd --grpc-web app wait cilium-dev --health --sync --timeout 300
 argocd --grpc-web app wait cilium-staging --health --sync --timeout 300
 argocd --grpc-web app wait cilium-prod --health --sync --timeout 300
+
+# jenkins management (GitOps)
+kubectl apply -f argocd/bootstrap/22-jenkins-management.yaml
+argocd --grpc-web app sync jenkins-management
+argocd --grpc-web app wait jenkins-management --health --sync --timeout 600
 
 # rollouts + traefik
 kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
