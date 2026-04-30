@@ -95,6 +95,12 @@ controller:
           - script: >
               pipelineJob('go-micro-gitops') {
                 description('Build and push images, then bump env tags for Argo CD canary rollout.')
+                parameters {
+                  stringParam('TAG', 'v1.0.6', 'Image tag mới cần build & push (ví dụ: v1.0.6)')
+                  choiceParam('ENV', ['dev', 'staging', 'prod'], 'Environment cần update image tag')
+                  booleanParam('ALL_SERVICES', true, 'Update tag cho tất cả services')
+                  stringParam('SERVICES', 'product inventory order payment noti client', 'Danh sách service cần update nếu ALL_SERVICES=false')
+                }
                 definition {
                   cpsScm {
                     scm {
