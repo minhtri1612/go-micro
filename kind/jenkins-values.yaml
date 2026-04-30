@@ -116,6 +116,41 @@ controller:
                 }
               }
 
+  # Fallback chắc chắn: tạo/update pipeline job bằng Groovy init script khi Jenkins khởi động.
+  initScripts:
+    01-seed-go-micro-job.groovy: |
+      import jenkins.model.Jenkins
+      import hudson.model.*
+      import hudson.plugins.git.*
+      import com.cloudbees.plugins.credentials.*
+      import org.jenkinsci.plugins.workflow.job.WorkflowJob
+      import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition
+
+      def j = Jenkins.get()
+      def jobName = "go-micro-gitops"
+      def existing = j.getItem(jobName)
+      WorkflowJob job = existing instanceof WorkflowJob ? (WorkflowJob) existing : j.createProject(WorkflowJob, jobName)
+
+      job.setDescription("Build and push images, then bump env tags for Argo CD canary rollout.")
+
+      def params = new ParametersDefinitionProperty(
+        new StringParameterDefinition("TAG", "v1.0.6", "Image tag moi can build & push"),
+        new ChoiceParameterDefinition("ENV", ["dev", "staging", "prod"] as String[], "Environment can update image tag"),
+        new BooleanParameterDefinition("ALL_SERVICES", true, "Update tag cho tat ca services"),
+        new StringParameterDefinition("SERVICES", "product inventory order payment noti client", "Danh sach service neu ALL_SERVICES=false")
+      )
+      job.removeProperty(ParametersDefinitionProperty)
+      job.addProperty(params)
+
+      def scm = new GitSCM("https://github.com/minhtri1612/go-micro.git")
+      scm.branches = [new BranchSpec("*/main")]
+      scm.userRemoteConfigs = [new UserRemoteConfig("https://github.com/minhtri1612/go-micro.git", null, null, "github-credentials")]
+
+      def defn = new CpsScmFlowDefinition(scm, "Jenkinsfile")
+      defn.setLightweight(false)
+      job.setDefinition(defn)
+      job.save()
+
 agent:
   enabled: true
   # Mount docker.sock từ host để agent chạy docker build được
