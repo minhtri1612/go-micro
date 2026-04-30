@@ -21,18 +21,7 @@ controller:
       cpu: "1000m"
       memory: "2Gi"
 
-  # Cài sẵn plugins cần thiết
-  installPlugins:
-    - kubernetes:latest
-    - workflow-aggregator:latest
-    - git:latest
-    - credentials-binding:latest
-    - pipeline-stage-view:latest
-    - docker-workflow:latest
-    - github:latest
-    - pipeline-utility-steps:latest
-
-  # Tắt tự nâng plugin latest để giảm thời gian cài và tránh timeout do update center
+  # Không ép plugin latest; để chart/default plugin set tương thích với Jenkins core.
   installLatestPlugins: false
 
   # Admin credentials (đổi lại sau khi cài)
