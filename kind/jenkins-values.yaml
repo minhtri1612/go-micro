@@ -57,7 +57,6 @@ controller:
     - kubernetes:4392.v19cea_fdb_5913
     - workflow-aggregator:608.v67378e9d3db_1
     - git:5.8.0
-    - configuration-as-code:2006.v001a_2ca_6b_574
     - job-dsl:1.93
 
   # Auto bootstrap credentials + pipeline từ GitHub qua JCasC/Job DSL.
