@@ -195,20 +195,39 @@ rollout:
                                 return 1
                               }
 
+                              fail() { echo "[FAIL] $1"; echo "[RAW ] $2"; exit 1; }
+                              assert_field() {
+                                local label="$1" value="$2" body="$3"
+                                [ -n "$value" ] || fail "$label missing or empty" "$body"
+                              }
+                              assert_contains() {
+                                local label="$1" pattern="$2" body="$3"
+                                echo "$body" | grep -qF "$pattern" || fail "$label not found (expected '$pattern')" "$body"
+                              }
+
                               case "$SERVICE" in
                                 product)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   NAME="canary-smoke-${RANDOM}"
                                   CREATE_BODY=$(curl -sS -X POST "$BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"$NAME\",\"description\":\"canary-smoke\",\"price\":11.11}")
+                                  echo "[DBG] product create: $CREATE_BODY"
                                   PRODUCT_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-                                  [ -n "$PRODUCT_ID" ] || { echo "FAILED: product create id missing"; exit 1; }
+                                  assert_field "product.id" "$PRODUCT_ID" "$CREATE_BODY"
+                                  assert_contains "product.name" "$NAME" "$CREATE_BODY"
+                                  assert_contains "product.price" "11.11" "$CREATE_BODY"
+                                  GET_BODY=$(curl -sS "$BASE/products/$PRODUCT_ID")
+                                  echo "[DBG] product get: $GET_BODY"
+                                  assert_contains "product.get.id" "\"id\":$PRODUCT_ID" "$GET_BODY"
                                   ;;
                                 inventory)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((1000 + RANDOM % 9000))
                                   CREATE_BODY=$(curl -sS -X POST "$BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":20,\"sku\":\"SKU-$PID\",\"location\":\"A1\"}")
+                                  echo "[DBG] inventory create: $CREATE_BODY"
                                   INV_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-                                  [ -n "$INV_ID" ] || { echo "FAILED: inventory create id missing"; exit 1; }
+                                  assert_field "inventory.id" "$INV_ID" "$CREATE_BODY"
+                                  assert_contains "inventory.quantity" "\"quantity\":20" "$CREATE_BODY"
+                                  assert_contains "inventory.sku" "SKU-$PID" "$CREATE_BODY"
                                   ;;
                                 order)
                                   P_BASE="http://product:$(svc_port product)"
@@ -216,24 +235,33 @@ rollout:
                                   O_BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$(( $(date +%s) + RANDOM ))
                                   P_CREATE=$(curl_retry "$P_BASE/products" "POST" "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}")
+                                  echo "[DBG] order seed product: $P_CREATE"
                                   REAL_PID=$(echo "$P_CREATE" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-                                  [ -n "$REAL_PID" ] || { echo "FAILED: order seed product id missing"; exit 1; }
+                                  assert_field "order.seed_product_id" "$REAL_PID" "$P_CREATE"
                                   curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$REAL_PID,\"quantity\":30,\"sku\":\"OSKU-$PID\",\"location\":\"B2\"}" >/dev/null
                                   ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":15.5}")
+                                  echo "[DBG] order create: $ORDER_BODY"
                                   ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-                                  [ -n "$ORDER_ID" ] || { echo "FAILED: order create id missing"; echo "ORDER_BODY=$ORDER_BODY"; exit 1; }
+                                  assert_field "order.id" "$ORDER_ID" "$ORDER_BODY"
+                                  assert_contains "order.customer_id" "\"customer_id\":1" "$ORDER_BODY"
+                                  assert_contains "order.product_id" "\"product_id\":$REAL_PID" "$ORDER_BODY"
                                   ;;
                                 payment)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PAY_BODY=$(curl_retry "$BASE/payments/" "POST" '{"order_id":9001,"customer_id":1,"amount":10.5,"currency":"usd"}')
-                                  echo "$PAY_BODY"
-                                  echo "$PAY_BODY" | grep -F "\"payment\"" >/dev/null
+                                  echo "[DBG] payment create: $PAY_BODY"
+                                  assert_contains "payment.key" "\"payment\"" "$PAY_BODY"
+                                  assert_contains "payment.amount" "10.5" "$PAY_BODY"
+                                  assert_contains "payment.currency" "usd" "$PAY_BODY"
                                   ;;
                                 noti)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   NOTI_BODY=$(curl -sS -X POST "$BASE/notifications" -H "Content-Type: application/json" -d '{"order_id":9001,"customer_id":1,"message":"canary smoke","status":"pending"}')
+                                  echo "[DBG] noti create: $NOTI_BODY"
                                   NOTI_ID=$(echo "$NOTI_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-                                  [ -n "$NOTI_ID" ] || { echo "FAILED: notification create id missing"; exit 1; }
+                                  assert_field "noti.id" "$NOTI_ID" "$NOTI_BODY"
+                                  assert_contains "noti.status" "pending" "$NOTI_BODY"
+                                  assert_contains "noti.order_id" "9001" "$NOTI_BODY"
                                   ;;
                                 *)
                                   echo "SKIP: no business-smoke profile for $SERVICE"
@@ -291,20 +319,37 @@ rollout:
                                 return 1
                               }
 
+                              fail() { echo "[FAIL] $1"; echo "[RAW ] $2"; exit 1; }
+                              assert_field() {
+                                local label="$1" value="$2" body="$3"
+                                [ -n "$value" ] || fail "$label missing or empty" "$body"
+                              }
+                              assert_contains() {
+                                local label="$1" pattern="$2" body="$3"
+                                echo "$body" | grep -qF "$pattern" || fail "$label not found (expected '$pattern')" "$body"
+                              }
+
                               case "$SERVICE" in
                                 product)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   LIST_BODY=$(curl -sS "$BASE/products")
-                                  [ "$LIST_BODY" = "[]" ] || echo "$LIST_BODY" | grep -F "\"id\":" >/dev/null
+                                  echo "[DBG] product list: $LIST_BODY"
+                                  # List phải là JSON array hợp lệ ([] hoặc có id)
+                                  echo "$LIST_BODY" | grep -qE '^\[' || fail "product.list not a JSON array" "$LIST_BODY"
                                   ;;
                                 inventory)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$((3000 + RANDOM % 9000))
                                   CREATE_BODY=$(curl -sS -X POST "$BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":9,\"sku\":\"DSKU-$PID\",\"location\":\"C3\"}")
+                                  echo "[DBG] inventory dep create: $CREATE_BODY"
                                   INV_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-                                  [ -n "$INV_ID" ] || { echo "FAILED: inventory dependency create id missing"; exit 1; }
+                                  assert_field "inventory.dep.id" "$INV_ID" "$CREATE_BODY"
+                                  assert_contains "inventory.dep.quantity" "\"quantity\":9" "$CREATE_BODY"
+                                  assert_contains "inventory.dep.sku" "DSKU-$PID" "$CREATE_BODY"
                                   GET_BODY=$(curl -sS "$BASE/inventory/$INV_ID")
-                                  echo "$GET_BODY" | grep -E "\"id\":[[:space:]]*$INV_ID" >/dev/null
+                                  echo "[DBG] inventory dep get: $GET_BODY"
+                                  assert_contains "inventory.dep.get.id" "\"id\":$INV_ID" "$GET_BODY"
+                                  assert_contains "inventory.dep.get.location" "C3" "$GET_BODY"
                                   ;;
                                 order)
                                   P_BASE="http://product:$(svc_port product)"
@@ -312,29 +357,40 @@ rollout:
                                   O_BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PID=$(( $(date +%s) + RANDOM ))
                                   P_CREATE=$(curl_retry "$P_BASE/products" "POST" "{\"name\":\"dep-pre-$PID\",\"description\":\"seed\",\"price\":21.5}")
+                                  echo "[DBG] order dep seed product: $P_CREATE"
                                   REAL_PID=$(echo "$P_CREATE" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-                                  [ -n "$REAL_PID" ] || { echo "FAILED: order dependency seed product id missing"; exit 1; }
+                                  assert_field "order.dep.seed_product_id" "$REAL_PID" "$P_CREATE"
                                   curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$REAL_PID,\"quantity\":25,\"sku\":\"ODSKU-$PID\",\"location\":\"D4\"}" >/dev/null
                                   ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5}")
+                                  echo "[DBG] order dep create: $ORDER_BODY"
                                   ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-                                  [ -n "$ORDER_ID" ] || { echo "FAILED: order dependency create id missing"; echo "ORDER_BODY=$ORDER_BODY"; exit 1; }
+                                  assert_field "order.dep.id" "$ORDER_ID" "$ORDER_BODY"
+                                  assert_contains "order.dep.total_price" "21.5" "$ORDER_BODY"
                                   ORDER_LIST=$(curl_retry "$O_BASE/orders")
-                                  echo "$ORDER_LIST" | grep -E "\"id\":[[:space:]]*$ORDER_ID" >/dev/null
+                                  echo "[DBG] order dep list: $ORDER_LIST"
+                                  assert_contains "order.dep.list.id" "\"id\":$ORDER_ID" "$ORDER_LIST"
                                   ;;
                                 payment)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   PAY_ORDER_ID=$((5000 + RANDOM % 9000))
-                                  curl -sS -X POST "$BASE/payments/" -H "Content-Type: application/json" -d "{\"order_id\":$PAY_ORDER_ID,\"customer_id\":1,\"amount\":12.34,\"currency\":\"usd\"}" >/dev/null
+                                  PAY_CREATE=$(curl -sS -X POST "$BASE/payments/" -H "Content-Type: application/json" -d "{\"order_id\":$PAY_ORDER_ID,\"customer_id\":1,\"amount\":12.34,\"currency\":\"usd\"}")
+                                  echo "[DBG] payment dep create: $PAY_CREATE"
                                   BY_ORDER=$(curl -sS "$BASE/payments/order/$PAY_ORDER_ID")
-                                  echo "$BY_ORDER" | grep -F "\"order_id\":$PAY_ORDER_ID" >/dev/null
+                                  echo "[DBG] payment dep by_order: $BY_ORDER"
+                                  assert_contains "payment.dep.order_id" "\"order_id\":$PAY_ORDER_ID" "$BY_ORDER"
+                                  assert_contains "payment.dep.amount" "12.34" "$BY_ORDER"
+                                  assert_contains "payment.dep.currency" "usd" "$BY_ORDER"
                                   ;;
                                 noti)
                                   BASE="http://${SERVICE}-canary:$(svc_port "$SERVICE")"
                                   CREATE_BODY=$(curl -sS -X POST "$BASE/notifications" -H "Content-Type: application/json" -d '{"order_id":7001,"customer_id":1,"message":"dep check","status":"pending"}')
+                                  echo "[DBG] noti dep create: $CREATE_BODY"
                                   NOTI_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-                                  [ -n "$NOTI_ID" ] || { echo "FAILED: noti dependency create id missing"; exit 1; }
+                                  assert_field "noti.dep.id" "$NOTI_ID" "$CREATE_BODY"
+                                  assert_contains "noti.dep.status" "pending" "$CREATE_BODY"
                                   DELIVER=$(curl -sS -X PUT "$BASE/notifications/$NOTI_ID/deliver")
-                                  echo "$DELIVER" | grep -F "delivered" >/dev/null
+                                  echo "[DBG] noti dep deliver: $DELIVER"
+                                  assert_contains "noti.dep.deliver" "delivered" "$DELIVER"
                                   ;;
                                 *)
                                   echo "SKIP: no dependency profile for $SERVICE"
