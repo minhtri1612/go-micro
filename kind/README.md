@@ -57,7 +57,12 @@ kubectl config set-cluster kind-prod --server=https://127.0.0.1:31443
 ```bash
 kubectl config use-context kind-management
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+helm repo add argo https://argoproj.github.io/argo-helm 2>/dev/null || true
+helm repo update
+helm upgrade --install argocd argo/argo-cd -n argocd \
+  --version 8.3.2 \
+  -f kind/argocd-values.yaml \
+  --wait --timeout 10m
 kubectl -n argocd wait --for=condition=Ready pods --all --timeout=300s
 
 kubectl -n argocd port-forward svc/argocd-server 8080:443
@@ -561,37 +566,42 @@ Da co runbook o muc `6.1` de:
 Trieu chung thuong gap:
 
 - `argocd app list` thay nhieu app `STATUS: Unknown`, `CONDITIONS: ComparisonError`
-- `argocd app get <app>` co loi dang `dial tcp <argocd-repo-server-ip>:8081 ... operation not permitted`
+- `argocd app get <app>` co loi `dial tcp <argocd-repo-server-cluster-ip>:8081: connect: operation not permitted`
 - `kubectl -n argocd get endpoints argocd-repo-server` ra rong
 
-Nguyen nhan thuong gap:
+Nguyen nhan hay gap tren local Kind + Cilium:
 
-- `argocd-repo-server`/`argocd-application-controller` chua healthy hoan toan sau reboot
-- Bootstrap tiep qua som khi ArgoCD core chua san sang
+- NetworkPolicy trong namespace `argocd` chan probe tu kubelet (node/host network) den `/healthz`
+- `argocd-repo-server` hoac `argocd-application-controller` khong bao gio `Ready`
+- Controller khong noi duoc repo-server => tat ca app thanh `ComparisonError`
 
-Preflight bat buoc (chay truoc khi bootstrap/sync hang loat):
+Chan doan nhanh:
 
 ```bash
 kubectl --context kind-management -n argocd get pods -o wide
 kubectl --context kind-management -n argocd get endpoints argocd-repo-server -o wide
+kubectl --context kind-management -n argocd describe pod -l app.kubernetes.io/name=argocd-repo-server | tail -20
+kubectl --context kind-management -n argocd describe pod -l app.kubernetes.io/name=argocd-application-controller | tail -20
 ```
 
-Chi tiep tuc neu:
-
-- `argocd-repo-server` va `argocd-application-controller` la `Ready`
-- `argocd-repo-server` co endpoint (KHONG rong)
-
-Lenh recovery nhanh (copy/chay):
+Neu thay readiness/liveness timeout den `:8084` (repo-server) hoac `:8082` (application-controller), fix nhanh cho local:
 
 ```bash
+helm repo add argo https://argoproj.github.io/argo-helm 2>/dev/null || true
+helm repo update
+helm upgrade --install argocd argo/argo-cd -n argocd \
+  --version 8.3.2 \
+  -f kind/argocd-values.yaml \
+  --wait --timeout 10m
+
 kubectl --context kind-management -n argocd rollout restart deploy/argocd-repo-server
 kubectl --context kind-management -n argocd rollout restart statefulset/argocd-application-controller
+kubectl --context kind-management -n argocd rollout restart deploy/argocd-notifications-controller
+```
 
-kubectl --context kind-management -n argocd rollout status deploy/argocd-repo-server --timeout=180s
-kubectl --context kind-management -n argocd rollout status statefulset/argocd-application-controller --timeout=180s
-kubectl --context kind-management -n argocd get endpoints argocd-repo-server -o wide
+Clear cache `ComparisonError`:
 
-# refresh tat ca app de clear ComparisonError cache
-argocd --grpc-web app list -o name | xargs -n1 argocd --grpc-web app get --refresh >/tmp/argocd-refresh.log 2>&1 || true
+```bash
+argocd --grpc-web app list -o name | xargs -n1 argocd --grpc-web app get --hard-refresh >/tmp/argocd-refresh.log 2>&1 || true
 argocd --grpc-web app list
 ```
