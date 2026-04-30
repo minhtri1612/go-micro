@@ -81,6 +81,42 @@ argocd --grpc-web account get-user-info
 
 ---
 
+## 2.1) Install Jenkins on management (nen lam som)
+
+Neu ban dung Jenkins de build/push image va bump tag `env/*.yaml`, nen cai ngay sau Argo CD
+(truoc bootstrap app) de tranh quen setup CI.
+
+```bash
+kubectl config use-context kind-management
+
+helm repo add jenkins https://charts.jenkins.io 2>/dev/null || true
+helm repo update
+
+helm upgrade --install jenkins jenkins/jenkins \
+  -n jenkins --create-namespace \
+  -f kind/jenkins-values.yaml \
+  --wait --timeout 10m
+
+kubectl -n jenkins wait --for=condition=Ready pods --all --timeout=300s
+kubectl --context kind-management -n jenkins get svc jenkins
+# expected EXTERNAL-IP: 172.18.255.51
+```
+
+Jenkins URL:
+
+```bash
+echo "http://172.18.255.51:8080"
+```
+
+Hoac dung port-forward:
+
+```bash
+kubectl -n jenkins port-forward svc/jenkins 8090:8080
+# -> http://localhost:8090
+```
+
+---
+
 ## 3) Register dev/staging/prod clusters to Argo CD
 
 ```bash
@@ -669,5 +705,106 @@ Ky vong ket qua:
 - management: `3/3 configured, 3/3 connected`
 - dev/staging/prod: `1/1 configured, 1/1 connected`
 
+---
 
-echo "http://$(docker inspect management-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}'):32000"
+## 9) Jenkins CI reference (chi tiet)
+
+Jenkins chạy trên cluster `kind-management` cùng với Argo CD.
+Nhiệm vụ duy nhất: build image → push Docker Hub → ghi tag mới vào `env/<ENV>.yaml` → git push → Argo CD tự phát hiện diff và trigger canary.
+
+```
+Jenkins (management)
+   │
+   ├─ 1. ./build-and-push-images.sh <TAG>  →  Docker Hub
+   ├─ 2. sed tag vào env/<ENV>.yaml
+   └─ 3. git commit && git push            →  GitHub
+                                                  ↓
+                                           Argo CD phát hiện diff
+                                                  ↓
+                                           Canary Rollout trigger
+```
+
+### 9.1 Cài Jenkins lên management
+
+```bash
+kubectl config use-context kind-management
+
+helm repo add jenkins https://charts.jenkins.io 2>/dev/null || true
+helm repo update
+
+helm upgrade --install jenkins jenkins/jenkins \
+  -n jenkins --create-namespace \
+  -f kind/jenkins-values.yaml \
+  --wait --timeout 10m
+
+kubectl -n jenkins wait --for=condition=Ready pods --all --timeout=300s
+```
+
+Lấy URL truy cập Jenkins:
+
+```bash
+# Jenkins service type LoadBalancer (IP tĩnh từ kind/jenkins-values.yaml)
+kubectl --context kind-management -n jenkins get svc jenkins
+# expected EXTERNAL-IP: 172.18.255.51
+echo "Jenkins URL: http://172.18.255.51:8080"
+
+# Hoặc dùng port-forward nếu không truy cập được LB IP trực tiếp
+kubectl -n jenkins port-forward svc/jenkins 8090:8080
+# → truy cập http://localhost:8090
+```
+
+Lấy admin password (nếu đổi khác với giá trị mặc định trong `jenkins-values.yaml`):
+
+```bash
+kubectl -n jenkins get secret jenkins -o jsonpath="{.data.jenkins-admin-password}" | base64 -d && echo
+```
+
+### 9.2 Cấu hình Credentials trong Jenkins
+
+Vào **Manage Jenkins → Credentials → (global)** → thêm 2 credentials:
+
+| ID | Kind | Giá trị |
+|---|---|---|
+| `dockerhub-credentials` | Username/Password | Docker Hub username + password/token |
+| `github-credentials` | Username/Password | GitHub username + Personal Access Token (cần quyền `repo`) |
+
+### 9.3 Tạo Pipeline Job
+
+1. New Item → **Pipeline** → đặt tên `go-micro-build-deploy`
+2. **Pipeline Definition**: `Pipeline script from SCM`
+3. **SCM**: Git → URL: `https://github.com/minhtri1612/go-micro.git`
+4. **Branch**: `*/main`
+5. **Script Path**: `Jenkinsfile`
+6. Save
+
+### 9.4 Cách deploy một tag mới
+
+Thay vì chạy `./build-and-push-images.sh v1.0.5` tay, chạy Jenkins pipeline:
+
+**Build with Parameters:**
+- `TAG` = `v1.0.5`
+- `ENV` = `dev` (hoặc `staging`, `prod`)
+- `ALL_SERVICES` = ✅
+
+Jenkins sẽ tự động build, push và update `env/dev.yaml`, Argo CD trigger canary.
+
+### 9.5 Lưu ý docker.sock trên Kind
+
+Jenkins agent cần mount `/var/run/docker.sock` từ máy host để chạy `docker build`.
+Đã được cấu hình sẵn trong `kind/jenkins-values.yaml` (`agent.volumes`).
+
+Kiểm tra agent pod có mount được không:
+
+```bash
+kubectl -n jenkins get pods
+kubectl -n jenkins describe pod -l jenkins=agent | grep -A5 "Mounts:"
+```
+
+Nếu `docker.sock` không tồn tại trong Kind node (vì Kind dùng containerd thay Docker),
+có thể cần chạy `docker build` trực tiếp trên Jenkins controller thay vì agent,
+hoặc dùng **kaniko** để build image không cần daemon:
+
+```bash
+# Kiểm tra docker.sock có tồn tại trên node hay không
+docker exec management-control-plane ls -la /var/run/docker.sock
+```

@@ -1,0 +1,81 @@
+# Jenkins Helm values cho Kind lab (management cluster)
+# Dùng docker.sock mount từ host – đơn giản nhất cho local lab
+# Chart: jenkins/jenkins
+
+controller:
+  # Expose qua MetalLB (LoadBalancer IP tĩnh trên Docker network kind)
+  serviceType: LoadBalancer
+  serviceAnnotations:
+    metallb.universe.tf/loadBalancerIPs: "172.18.255.51"
+
+  # Tắt Ingress (truy cập trực tiếp qua LoadBalancer IP)
+  ingress:
+    enabled: false
+
+  # Giảm resource cho lab
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+
+  # Cài sẵn plugins cần thiết
+  installPlugins:
+    - kubernetes:latest
+    - workflow-aggregator:latest
+    - git:latest
+    - credentials-binding:latest
+    - pipeline-stage-view:latest
+    - blueocean:latest
+    - docker-workflow:latest
+    - github:latest
+    - pipeline-utility-steps:latest
+
+  # Tắt setup wizard để dùng ngay
+  installLatestPlugins: true
+
+  # Admin credentials (đổi lại sau khi cài)
+  admin:
+    username: admin
+    password: "admin123"  # ← ĐỔI SAU KHI CÀI
+
+  # JVM options
+  javaOpts: "-Xmx1g -Xms512m"
+
+  # Cho phép truy cập script console (cần cho config tay)
+  scriptApproval:
+    - "method groovy.json.JsonOutput toJson java.lang.Object"
+
+  # Tắt CSRF tạm (để gọi API từ terminal dễ hơn trong lab)
+  csrf:
+    defaultCrumbIssuer:
+      enabled: true
+      proxyCompatability: true
+
+agent:
+  enabled: true
+  # Mount docker.sock từ host để agent chạy docker build được
+  volumes:
+    - type: HostPath
+      hostPath: /var/run/docker.sock
+      mountPath: /var/run/docker.sock
+  # Cấp quyền cho agent đọc docker.sock
+  podRetention: OnFailure
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+# ServiceAccount cho Jenkins controller
+serviceAccount:
+  create: true
+  name: jenkins
