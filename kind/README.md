@@ -99,13 +99,13 @@ helm upgrade --install jenkins jenkins/jenkins \
 
 kubectl -n jenkins wait --for=condition=Ready pods --all --timeout=300s
 kubectl --context kind-management -n jenkins get svc jenkins
-# expected EXTERNAL-IP: 172.18.255.51
+# expected EXTERNAL-IP: 172.18.255.49
 ```
 
 Jenkins URL:
 
 ```bash
-echo "http://172.18.255.51:8080"
+echo "http://172.18.255.49:8080"
 ```
 
 Hoac dung port-forward:
@@ -745,8 +745,8 @@ Lấy URL truy cập Jenkins:
 ```bash
 # Jenkins service type LoadBalancer (IP tĩnh từ kind/jenkins-values.yaml)
 kubectl --context kind-management -n jenkins get svc jenkins
-# expected EXTERNAL-IP: 172.18.255.51
-echo "Jenkins URL: http://172.18.255.51:8080"
+# expected EXTERNAL-IP: 172.18.255.49
+echo "Jenkins URL: http://172.18.255.49:8080"
 
 # Hoặc dùng port-forward nếu không truy cập được LB IP trực tiếp
 kubectl -n jenkins port-forward svc/jenkins 8090:8080

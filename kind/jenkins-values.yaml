@@ -6,7 +6,7 @@ controller:
   # Expose qua MetalLB (LoadBalancer IP tĩnh trên Docker network kind)
   serviceType: LoadBalancer
   serviceAnnotations:
-    metallb.universe.tf/loadBalancerIPs: "172.18.255.51"
+    metallb.universe.tf/loadBalancerIPs: "172.18.255.49"
 
   # Tắt Ingress (truy cập trực tiếp qua LoadBalancer IP)
   ingress:
