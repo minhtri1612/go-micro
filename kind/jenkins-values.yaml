@@ -21,9 +21,6 @@ controller:
       cpu: "1000m"
       memory: "2Gi"
 
-  # Không ép plugin latest; để chart/default plugin set tương thích với Jenkins core.
-  installLatestPlugins: false
-
   # Admin credentials (đổi lại sau khi cài)
   admin:
     username: admin
@@ -35,12 +32,87 @@ controller:
   # Cho phép truy cập script console (cần cho config tay)
   scriptApproval:
     - "method groovy.json.JsonOutput toJson java.lang.Object"
+    - "method javaposse.jobdsl.dsl.DslFactory pipelineJob java.lang.String"
+    - "new javaposse.jobdsl.dsl.helpers.workflow.CpsScmContext"
+    - "method javaposse.jobdsl.dsl.helpers.workflow.WorkflowDefinitionContext cpsScm groovy.lang.Closure"
+    - "method javaposse.jobdsl.dsl.helpers.workflow.CpsScmContext scm groovy.lang.Closure"
+    - "method javaposse.jobdsl.dsl.helpers.scm.ScmContext git groovy.lang.Closure"
+    - "method javaposse.jobdsl.dsl.helpers.scm.GitContext remote groovy.lang.Closure"
+    - "method javaposse.jobdsl.dsl.helpers.scm.RemoteContext url java.lang.String"
+    - "method javaposse.jobdsl.dsl.helpers.scm.RemoteContext credentials java.lang.String"
+    - "method javaposse.jobdsl.dsl.helpers.scm.GitContext branch java.lang.String"
+    - "method javaposse.jobdsl.dsl.helpers.workflow.CpsScmContext scriptPath java.lang.String"
 
   # Jenkins 2.528+ + chart 5.8.110: default crumbIssuer config có thể sinh field JCasC
   # không tương thích (excludeClientIPFromCrumb). Ép disable để tránh CrashLoop.
   csrf:
     defaultCrumbIssuer:
       enabled: false
+
+  # Pin plugin set để tránh mismatch dependency với Jenkins core.
+  installLatestPlugins: false
+  installLatestSpecifiedPlugins: false
+  initializeOnce: true
+  installPlugins:
+    - kubernetes:4392.v19cea_fdb_5913
+    - workflow-aggregator:608.v67378e9d3db_1
+    - git:5.8.0
+    - configuration-as-code:2006.v001a_2ca_6b_574
+    - job-dsl:1.93
+    - credentials:1415.v831096eb_5534
+    - plain-credentials:199.v9f8e1f741799
+    - credentials-binding:702.vfe613e537e88
+
+  # Auto bootstrap credentials + pipeline từ GitHub qua JCasC/Job DSL.
+  additionalSecrets:
+    - name: github-user
+      value: "minhtri1612"
+    - name: github-token
+      value: "REPLACE_ME_GITHUB_PAT"
+    - name: dockerhub-user
+      value: "REPLACE_ME_DOCKERHUB_USER"
+    - name: dockerhub-pass
+      value: "REPLACE_ME_DOCKERHUB_TOKEN"
+
+  JCasC:
+    configScripts:
+      ci-credentials: |
+        credentials:
+          system:
+            domainCredentials:
+              - credentials:
+                  - usernamePassword:
+                      scope: GLOBAL
+                      id: "github-credentials"
+                      username: "${github-user}"
+                      password: "${github-token}"
+                      description: "GitHub HTTPS credential for Jenkins pipeline"
+                  - usernamePassword:
+                      scope: GLOBAL
+                      id: "dockerhub-credentials"
+                      username: "${dockerhub-user}"
+                      password: "${dockerhub-pass}"
+                      description: "Docker Hub credential for Jenkins pipeline"
+      ci-pipeline-job: |
+        jobs:
+          - script: >
+              pipelineJob('go-micro-gitops') {
+                description('Build and push images, then bump env tags for Argo CD canary rollout.')
+                definition {
+                  cpsScm {
+                    scm {
+                      git {
+                        remote {
+                          url('https://github.com/minhtri1612/go-micro.git')
+                          credentials('github-credentials')
+                        }
+                        branch('*/main')
+                      }
+                    }
+                    scriptPath('Jenkinsfile')
+                  }
+                }
+              }
 
 agent:
   enabled: true
