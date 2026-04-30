@@ -59,9 +59,6 @@ controller:
     - git:5.8.0
     - configuration-as-code:2006.v001a_2ca_6b_574
     - job-dsl:1.93
-    - credentials:1415.v831096eb_5534
-    - plain-credentials:199.v9f8e1f741799
-    - credentials-binding:702.vfe613e537e88
 
   # Auto bootstrap credentials + pipeline từ GitHub qua JCasC/Job DSL.
   additionalSecrets:
