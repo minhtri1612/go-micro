@@ -36,12 +36,6 @@ controller:
   scriptApproval:
     - "method groovy.json.JsonOutput toJson java.lang.Object"
 
-  # Tắt CSRF tạm (để gọi API từ terminal dễ hơn trong lab)
-  csrf:
-    defaultCrumbIssuer:
-      enabled: true
-      proxyCompatability: true
-
 agent:
   enabled: true
   # Mount docker.sock từ host để agent chạy docker build được
