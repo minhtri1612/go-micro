@@ -604,7 +604,9 @@ rollout:
                                   OS_BODY=$(curl -sS -X POST "$BASE/notifications/order-status" -H "Content-Type: application/json" \
                                     -d "{\"order_id\":$ORDER_ID,\"customer_id\":$CUST_ID,\"status\":\"processing\"}")
                                   echo "[DBG] noti dep order-status: $OS_BODY"
-                                  assert_contains "noti.dep.order_status" "processing" "$OS_BODY"
+                                  assert_contains "noti.dep.order_status.message" "Order status notification created" "$OS_BODY"
+                                  OS_NID=$(echo "$OS_BODY" | sed -n 's/.*"notification_id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+                                  assert_field "noti.dep.order_status.notification_id" "$OS_NID" "$OS_BODY"
 
                                   # 6. PUT /notifications/:id/deliver
                                   DELIVER=$(curl -sS -X PUT "$BASE/notifications/$NOTI_ID/deliver")
@@ -695,6 +697,9 @@ rollout:
               prometheus:
                 address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.255.45" }}'
                 query: |
+                  {{- if eq (toString .Values.currentService) "client" }}
+                  vector(1)
+                  {{- else }}
                   (
                     (
                       sum(increase(gin_request_total{pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}[5m])) > 0
@@ -708,6 +713,7 @@ rollout:
                       )
                     )
                   ) or vector(0)
+                  {{- end }}
   canary:
     steps:
       - setWeight: 5
