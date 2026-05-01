@@ -258,6 +258,17 @@ rollout:
                                 local label="$1" pattern="$2" body="$3"
                                 echo "$body" | grep -qF "$pattern" || fail "$label not found (expected '$pattern')" "$body"
                               }
+                              assert_any_contains() {
+                                local label="$1" body="$2"; shift 2
+                                local ok=1
+                                for p in "$@"; do
+                                  if echo "$body" | grep -qF "$p"; then
+                                    ok=0
+                                    break
+                                  fi
+                                done
+                                [ $ok -eq 0 ] || fail "$label none matched: $*" "$body"
+                              }
 
                               case "$SERVICE" in
                                 product)
@@ -512,7 +523,23 @@ rollout:
                                   assert_contains "order.dep.put.id" "\"id\":$ORDER_ID" "$PUT_BODY"
                                   assert_contains "order.dep.put.quantity" "\"quantity\":2" "$PUT_BODY"
 
-                                  # 8. DELETE /orders/:id — xóa order, verify response
+                                  # 8. POST /orders/with-payment — order path tích hợp payment
+                                  WITH_PAY=$(curl -sS -X POST "$O_BASE/orders/with-payment" \
+                                    -H "Content-Type: application/json" \
+                                    -d "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5,\"currency\":\"usd\"}")
+                                  echo "[DBG] order dep with-payment: $WITH_PAY"
+                                  assert_contains "order.dep.with_payment.order" "\"order\"" "$WITH_PAY"
+                                  assert_any_contains "order.dep.with_payment.result" "$WITH_PAY" "\"payment\"" "\"payment_error\""
+
+                                  # 9. POST /orders/batch — xử lý batch tối thiểu
+                                  BATCH_BODY=$(curl -sS -X POST "$O_BASE/orders/batch" \
+                                    -H "Content-Type: application/json" \
+                                    -d "[{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5}]")
+                                  echo "[DBG] order dep batch: $BATCH_BODY"
+                                  assert_contains "order.dep.batch.total_orders" "\"total_orders\":1" "$BATCH_BODY"
+                                  assert_contains "order.dep.batch.successful" "\"successful\":1" "$BATCH_BODY"
+
+                                  # 10. DELETE /orders/:id — xóa order, verify response
                                   DEL_BODY=$(curl -sS -X DELETE "$O_BASE/orders/$ORDER_ID")
                                   echo "[DBG] order dep delete: $DEL_BODY"
                                   assert_contains "order.dep.delete" "deleted successfully" "$DEL_BODY"
