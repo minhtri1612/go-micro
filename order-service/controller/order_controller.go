@@ -433,6 +433,21 @@ func (oc *OrderController) GetOrder(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
 			return
 		}
+		// If cache backend is unavailable (e.g. REDIS_HOST not configured),
+		// fall back to DB so rollout checks are not blocked by cache infra.
+		if oc.OrderRepo != nil {
+			order, dbErr := oc.OrderRepo.GetOrderFromDB(orderID)
+			if dbErr == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
+				return
+			}
+			if dbErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get order: " + dbErr.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, order)
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get order: " + err.Error()})
 		return
 	}
