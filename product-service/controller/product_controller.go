@@ -39,12 +39,8 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 		return
 	}
 
-	// BUG INJECTION: thiếu id trong response — canary test sẽ catch cái này
-	c.JSON(http.StatusCreated, gin.H{
-		"name":        product.Name,
-		"description": product.Description,
-		"price":       product.Price,
-	})
+	product.ID = id
+	c.JSON(http.StatusCreated, product)
 }
 
 // GetProducts returns all products
