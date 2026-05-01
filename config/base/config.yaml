@@ -529,7 +529,9 @@ rollout:
                                     -d "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5,\"currency\":\"usd\"}")
                                   echo "[DBG] order dep with-payment: $WITH_PAY"
                                   assert_contains "order.dep.with_payment.order" "\"order\"" "$WITH_PAY"
-                                  assert_any_contains "order.dep.with_payment.result" "$WITH_PAY" "\"payment\"" "\"payment_error\""
+                                  if ! echo "$WITH_PAY" | grep -qF "\"payment\"" && ! echo "$WITH_PAY" | grep -qF "\"payment_error\""; then
+                                    fail "order.dep.with_payment.result none matched: \"payment\" or \"payment_error\"" "$WITH_PAY"
+                                  fi
 
                                   # 9. POST /orders/batch — xử lý batch tối thiểu
                                   BATCH_BODY=$(curl -sS -X POST "$O_BASE/orders/batch" \
