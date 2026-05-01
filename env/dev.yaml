@@ -4,7 +4,7 @@ env: dev
 
 product:
   image:
-    tag: "product-service-v1.0.5"
+    tag: "product-service-v1.0.3"
   replicaCount: 2
   rollout:
     enabled: true
@@ -20,7 +20,7 @@ inventory:
 
 order:
   image:
-    tag: "order-service-v1.0.5"
+    tag: "order-service-v1.0.6"
   replicaCount: 2
   rollout:
     enabled: true
