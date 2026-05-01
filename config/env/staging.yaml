@@ -54,12 +54,16 @@ rollout:
           args:
             - name: service-name
               value: '{{ include "template.fullname" . }}'
+            - name: service-target
+              value: '{{ include "template.fullname" . }}-canary'
       - analysis:
           templates:
             - templateName: '{{ include "template.fullname" . }}-dependency-check'
           args:
             - name: service-name
               value: '{{ include "template.fullname" . }}'
+            - name: service-target
+              value: '{{ include "template.fullname" . }}-canary'
       - analysis:
           templates:
             - templateName: '{{ include "template.fullname" . }}-synthetic-load'
