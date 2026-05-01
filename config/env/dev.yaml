@@ -38,7 +38,7 @@ rollout:
       - setWeight: 5
       - analysis:
           templates:
-            - templateName: '{{ include "template.fullname" . }}-smoke-test'
+            - templateName: '{{ include "template.fullname" . }}-route-smoke-test'
           args:
             - name: service-name
               value: '{{ include "template.fullname" . }}'
