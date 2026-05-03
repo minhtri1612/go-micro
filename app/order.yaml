@@ -76,44 +76,6 @@ traefik:
 rollout:
   enabled: true
   revisionHistoryLimit: 3
-  canary:
-    stableService: ""
-    canaryService: ""
-    maxSurge: 25%
-    maxUnavailable: 0
-    steps:
-      - setWeight: 10
-      - pause:
-          duration: 5s
-      - analysis:
-          templates:
-            - templateName: '{{ include "template.fullname" . }}-success-rate'
-          args:
-            - name: service-name
-              value: '{{ include "template.fullname" . }}'
-      - setWeight: 50
-      - pause:
-          duration: 5s
-      - setWeight: 100
-  analysis:
-    enabled: true
-    templates:
-      - name: success-rate
-        args:
-          - name: service-name
-        metrics:
-          - name: success-rate
-            interval: 30s
-            count: 5
-            initialDelay: 45s
-            failureLimit: 3
-            successCondition: result[0] >= 0.82
-            failureCondition: result[0] < 0.82
-            provider:
-              prometheus:
-                address: '{{ .Values.rollout.analysis.prometheusAddress | default "http://172.18.0.3:32090" }}'
-                query: |
-                  avg(meo_workload_up{namespace="{{ .Release.Namespace }}",pod=~"{{ "{{" }}args.service-name{{ "}}" }}-.*"}) or vector(0)
 
 ciliumNetworkPolicy:
   enabled: false
