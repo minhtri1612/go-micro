@@ -9,6 +9,7 @@ traefik:
   hostname: go-micro.local
   stableWeight: 99
   canaryWeight: 1
+  darkLaunch: true
 
 ciliumNetworkPolicy:
   enabled: false
