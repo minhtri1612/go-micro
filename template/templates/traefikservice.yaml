@@ -14,7 +14,7 @@
 {{- $strategy := $rolloutCfg.strategy | default "canary" | lower }}
 {{- $stableSvc := $rolloutCfg.canary.stableService | default $fullName }}
 {{- $canarySvc := $rolloutCfg.canary.canaryService | default (printf "%s-canary" $fullName) }}
-{{- $activeSvc := $rolloutCfg.blueGreen.activeService | default $fullName }}
+{{- if not (and $rolloutEnabled (eq $strategy "bluegreen")) }}
 apiVersion: traefik.io/v1alpha1
 kind: TraefikService
 metadata:
@@ -31,13 +31,10 @@ spec:
       - name: {{ $canarySvc }}
         port: {{ $svcPort }}
         weight: {{ .Values.traefik.canaryWeight | default 10 }}
-      {{- else if and $rolloutEnabled (eq $strategy "bluegreen") }}
-      - name: {{ $activeSvc }}
-        port: {{ $svcPort }}
-        weight: 1
       {{- else }}
       - name: {{ $fullName }}
         port: {{ $svcPort }}
         weight: 1
       {{- end }}
+{{- end }}
 {{- end }}

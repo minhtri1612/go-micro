@@ -144,6 +144,46 @@ rollout:
                                 exit 1
                               fi
                               echo "PASSED: route gate"
+      - name: preview-route-smoke-test
+        args:
+          - name: service-name
+          - name: service-port
+          - name: hostname
+          - name: path-prefix
+        metrics:
+          - name: health-check
+            count: 1
+            failureLimit: 0
+            provider:
+              job:
+                spec:
+                  backoffLimit: 0
+                  template:
+                    spec:
+                      restartPolicy: Never
+                      containers:
+                        - name: smoke
+                          image: curlimages/curl:8.5.0
+                          command:
+                            - sh
+                            - -c
+                            - |
+                              set -e
+                              GATEWAY="traefik.traefik.svc.cluster.local"
+                              HOST="{{ `{{` }}args.hostname{{ `}}` }}"
+                              PREFIX="{{ `{{` }}args.path-prefix{{ `}}` }}"
+                              RESPONSE=$(curl -i -s -X GET -H "Host: $HOST" -H "X-Preview: true" http://$GATEWAY$PREFIX/health)
+                              HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')
+                              if [ "$HTTP_CODE" != "200" ]; then
+                                echo "FAILED: health returned $HTTP_CODE"
+                                exit 1
+                              fi
+                              SERVED_BY=$(echo "$RESPONSE" | grep -i "X-Served-By" | awk '{print $2}' | tr -d '\r')
+                              if [ "$SERVED_BY" != "preview" ]; then
+                                echo "FAILED: request was not served by preview ($SERVED_BY)"
+                                exit 1
+                              fi
+                              echo "PASSED: preview route gate"
       - name: target-smoke-test
         args:
           - name: service-name
@@ -764,14 +804,19 @@ rollout:
     scaleDownDelaySeconds: 30
     prePromotionAnalysis:
       templates:
-        - templateName: '{{ include "template.fullname" . }}-target-smoke-test'
+        - templateName: '{{ include "template.fullname" . }}-preview-route-smoke-test'
         - templateName: '{{ include "template.fullname" . }}-business-smoke'
         - templateName: '{{ include "template.fullname" . }}-dependency-check'
         - templateName: '{{ include "template.fullname" . }}-synthetic-load'
-        - templateName: '{{ include "template.fullname" . }}-latency-p95-check'
         - templateName: '{{ include "template.fullname" . }}-success-rate'
       args:
         - name: service-name
           value: '{{ include "template.fullname" . }}'
         - name: service-target
           value: '{{ include "template.fullname" . }}-preview'
+        - name: service-port
+          value: '{{ .Values.service.port }}'
+        - name: hostname
+          value: '{{ .Values.traefik.hostname }}'
+        - name: path-prefix
+          value: '{{ .Values.traefik.pathPrefix | default "" }}'

@@ -25,11 +25,14 @@ spec:
       {{- include "template.selectorLabels" . | nindent 6 }}
   strategy:
     {{- if eq $strategy "bluegreen" }}
+{{- $bg := $rolloutCfg.blueGreen | default dict }}
+{{- $autoProm := index $bg "autoPromotionEnabled" }}
+{{- $scaleDown := index $bg "scaleDownDelaySeconds" }}
     blueGreen:
       activeService: {{ $rolloutCfg.blueGreen.activeService | default (include "template.fullname" .) }}
       previewService: {{ $rolloutCfg.blueGreen.previewService | default (printf "%s-preview" (include "template.fullname" .) ) }}
-      autoPromotionEnabled: {{ $rolloutCfg.blueGreen.autoPromotionEnabled | default true }}
-      scaleDownDelaySeconds: {{ $rolloutCfg.blueGreen.scaleDownDelaySeconds | default 30 }}
+      autoPromotionEnabled: {{ if kindIs "bool" $autoProm }}{{ $autoProm }}{{ else }}true{{ end }}
+      scaleDownDelaySeconds: {{ if kindIs "float64" $scaleDown }}{{ int $scaleDown }}{{ else if kindIs "int64" $scaleDown }}{{ $scaleDown }}{{ else if kindIs "int" $scaleDown }}{{ $scaleDown }}{{ else }}30{{ end }}
       {{- if $rolloutCfg.blueGreen.prePromotionAnalysis }}
       prePromotionAnalysis:
         {{- tpl (toYaml $rolloutCfg.blueGreen.prePromotionAnalysis) . | nindent 8 }}
