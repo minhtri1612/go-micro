@@ -7,8 +7,8 @@ routing:
 traefik:
   enabled: true
   hostname: staging.go-micro.local
-  stableWeight: 90
-  canaryWeight: 10
+  stableWeight: 95
+  canaryWeight: 5
   darkLaunch: true   # Staging: QA team dùng header X-Canary: true để test
 
 ciliumNetworkPolicy:
