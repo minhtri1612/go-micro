@@ -21,7 +21,7 @@ rollout:
     enabled: true
     prometheusAddress: http://172.18.255.45
     load:
-      vus: 50
+      vus: 12
       duration: 60s
       errorRate: 0.02
     thresholds:

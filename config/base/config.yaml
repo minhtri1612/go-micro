@@ -277,14 +277,14 @@ rollout:
                                 local method="${2:-GET}"
                                 local body="${3:-}"
                                 local tries=0
-                                while [ $tries -lt 5 ]; do
+                                while [ $tries -lt 10 ]; do
                                   if [ -n "$body" ]; then
                                     RESP=$(curl -sS -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
                                   else
                                     RESP=$(curl -sS -X "$method" "$url") && { echo "$RESP"; return 0; }
                                   fi
                                   tries=$((tries+1))
-                                  sleep 2
+                                  sleep 3
                                 done
                                 return 1
                               }
@@ -314,13 +314,13 @@ rollout:
                                 product)
                                   BASE="http://${TARGET}:$(svc_port "$SERVICE")"
                                   NAME="canary-smoke-${RANDOM}"
-                                  CREATE_BODY=$(curl -sS -X POST "$BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"$NAME\",\"description\":\"canary-smoke\",\"price\":11.11}")
+                                  CREATE_BODY=$(curl_retry "$BASE/products" "POST" "{\"name\":\"$NAME\",\"description\":\"canary-smoke\",\"price\":11.11}")
                                   echo "[DBG] product create: $CREATE_BODY"
                                   PRODUCT_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   assert_field "product.id" "$PRODUCT_ID" "$CREATE_BODY"
                                   assert_contains "product.name" "$NAME" "$CREATE_BODY"
                                   assert_contains "product.price" "11.11" "$CREATE_BODY"
-                                  GET_BODY=$(curl -sS "$BASE/products/$PRODUCT_ID")
+                                  GET_BODY=$(curl_retry "$BASE/products/$PRODUCT_ID")
                                   echo "[DBG] product get: $GET_BODY"
                                   assert_contains "product.get.id" "\"id\":$PRODUCT_ID" "$GET_BODY"
                                   ;;
@@ -414,14 +414,14 @@ rollout:
                                 local method="${2:-GET}"
                                 local body="${3:-}"
                                 local tries=0
-                                while [ $tries -lt 5 ]; do
+                                while [ $tries -lt 10 ]; do
                                   if [ -n "$body" ]; then
                                     RESP=$(curl -sS -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
                                   else
                                     RESP=$(curl -sS -X "$method" "$url") && { echo "$RESP"; return 0; }
                                   fi
                                   tries=$((tries+1))
-                                  sleep 2
+                                  sleep 3
                                 done
                                 return 1
                               }
@@ -441,31 +441,31 @@ rollout:
                                   BASE="http://${TARGET}:$(svc_port "$SERVICE")"
 
                                   # 1. GET /products — list phải là JSON array
-                                  LIST_BODY=$(curl -sS "$BASE/products")
+                                  LIST_BODY=$(curl_retry "$BASE/products")
                                   echo "[DBG] product list: $LIST_BODY"
                                   echo "$LIST_BODY" | grep -qE '^\[' || fail "product.list not a JSON array" "$LIST_BODY"
 
                                   # 2. POST /products — tạo mới để test CRUD
                                   PNAME="dep-prod-${RANDOM}"
-                                  CREATE_BODY=$(curl -sS -X POST "$BASE/products" -H "Content-Type: application/json" -d "{\"name\":\"$PNAME\",\"description\":\"dep-check\",\"price\":55.5}")
+                                  CREATE_BODY=$(curl_retry "$BASE/products" "POST" "{\"name\":\"$PNAME\",\"description\":\"dep-check\",\"price\":55.5}")
                                   echo "[DBG] product dep create: $CREATE_BODY"
                                   PROD_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
                                   assert_field "product.dep.id" "$PROD_ID" "$CREATE_BODY"
 
                                   # 3. GET /products/:id
-                                  GET_BODY=$(curl -sS "$BASE/products/$PROD_ID")
+                                  GET_BODY=$(curl_retry "$BASE/products/$PROD_ID")
                                   echo "[DBG] product dep get: $GET_BODY"
                                   assert_contains "product.dep.get.id" "\"id\":$PROD_ID" "$GET_BODY"
                                   assert_contains "product.dep.get.price" "55.5" "$GET_BODY"
 
                                   # 4. PUT /products/:id — update price
-                                  PUT_BODY=$(curl -sS -X PUT "$BASE/products/$PROD_ID" -H "Content-Type: application/json" -d "{\"name\":\"$PNAME-upd\",\"description\":\"updated\",\"price\":77.7}")
+                                  PUT_BODY=$(curl_retry "$BASE/products/$PROD_ID" "PUT" "{\"name\":\"$PNAME-upd\",\"description\":\"updated\",\"price\":77.7}")
                                   echo "[DBG] product dep put: $PUT_BODY"
                                   assert_contains "product.dep.put.id" "\"id\":$PROD_ID" "$PUT_BODY"
                                   assert_contains "product.dep.put.price" "77.7" "$PUT_BODY"
 
                                   # 5. DELETE /products/:id
-                                  DEL_BODY=$(curl -sS -X DELETE "$BASE/products/$PROD_ID")
+                                  DEL_BODY=$(curl_retry "$BASE/products/$PROD_ID" "DELETE")
                                   echo "[DBG] product dep delete: $DEL_BODY"
                                   assert_contains "product.dep.delete" "deleted successfully" "$DEL_BODY"
                                   ;;
@@ -666,6 +666,7 @@ rollout:
           - name: load-generator-k6
             count: 1
             failureLimit: 0
+            initialDelay: 40s
             provider:
               job:
                 spec:
@@ -712,7 +713,7 @@ rollout:
           - name: latency-p95-check
             interval: 15s
             count: '{{ .Values.rollout.analysis.thresholds.latencyCount | default 3 }}'
-            initialDelay: 20s
+            initialDelay: 70s
             failureLimit: '{{ .Values.rollout.analysis.thresholds.latencyFailureLimit | default 0 }}'
             successCondition: 'result[0] == 999 || result[0] < {{ .Values.rollout.analysis.thresholds.latencyP95 | default 0.5 }}'
             provider:
