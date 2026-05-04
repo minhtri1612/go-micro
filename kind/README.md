@@ -79,37 +79,32 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 argocd --grpc-web account get-user-info
 ```
 
-### 2.1) Install Jenkins on management (GitOps bằng YAML)
+### 2.1) Jenkins (management, tuỳ chọn)
 
-Nếu bạn dùng Jenkins để build/push image và bump tag `env/*.yaml`, nên cài **ngay sau Argo CD** (trước bootstrap app workload). Khuyến nghị dùng Argo CD Application trong repo: `argocd/bootstrap/22-jenkins-mgmt.yaml` (tên Application trên Argo: **`jenkins-management`**).
-
-**Lưu ý:** Để có URL kiểu LoadBalancer (`EXTERNAL-IP`), management cluster thường đã cần **MetalLB** (và đã sync đúng pool IP như các bước Metallb / cilium sau trong README). Nếu chưa có LB, truy cập Jenkins bằng **`kubectl port-forward`** tới `Service` `jenkins` trong namespace `jenkins`.
+Application: `argocd/bootstrap/22-jenkins-mgmt.yaml` → Service **`jenkins-management`** (không phải `jenkins`). Chưa có MetalLB thì `EXTERNAL-IP` trống là **bình thường** — dùng port-forward.
 
 ```bash
 kubectl config use-context kind-management
-
 kubectl apply -f argocd/bootstrap/22-jenkins-mgmt.yaml
-argocd --grpc-web app sync jenkins-management
-argocd --grpc-web app wait jenkins-management --health --sync --timeout 600
-kubectl --context kind-management -n jenkins get svc jenkins
-# Kiểm tra cột EXTERNAL-IP (sau MetalLB). Ví dụ lab: 172.18.255.49 — có thể khác máy bạn.
+argocd --grpc-web app sync jenkins-management && argocd --grpc-web app wait jenkins-management --sync --timeout 300
+kubectl -n jenkins get svc,pods
+kubectl -n jenkins port-forward svc/jenkins-management 8080:8080   # http://localhost:8080 — admin password: kubectl -n jenkins get secret jenkins-management -o yaml
 ```
 
-Jenkins URL (ưu tiên lấy IP thực tế từ Service):
+Pod **`Init:CrashLoopBackOff`**: thường do init tên **`init`** (cài plugin). Chart còn init **`config-reload-init`** (sidecar) — **không dùng `initContainers[0]`** (sẽ lộn sang sidecar, log sẽ là JSON “Starting collector”).
 
 ```bash
-# In URL từ EXTERNAL-IP hiện có (rỗng nếu chưa có LoadBalancer)
-IP=$(kubectl --context kind-management -n jenkins get svc jenkins -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-echo "http://${IP}:8080"
+kubectl -n jenkins describe pod jenkins-management-0 | tail -50
+kubectl -n jenkins logs jenkins-management-0 -c init --tail=100
+kubectl -n jenkins logs jenkins-management-0 -c init --previous --tail=100
+# --previous lỗi "not found" nếu sidecar chưa từng terminate — bỏ qua, chỉ cần -c init
 ```
 
-Hoặc khi đã biết IP MetalLB management (ví dụ `172.18.255.49`):
+Nếu vẫn crash: xem `describe` dòng **Last State: OOMKilled** — tăng `controller.initContainerResources` trong `jenkins/jenkins-values.yaml` (repo đã set sẵn limit RAM cho init).
 
-```bash
-echo "http://172.18.255.49:8080"
-```
+Hay gặp: **version plugin không khớp image/chart** → init `jenkins-plugin-cli` fail (log kiểu `requires a greater version of Jenkins (2.479.x)`). Tăng **`controller.image.tag`** trong `jenkins/jenkins-values.yaml` cho ≥ version đó (repo đang pin **`2.479.3-lts-jdk17`** với chart `5.1.20`). Sau khi push + sync mà vẫn CrashLoop: `kubectl -n jenkins delete pod jenkins-management-0`; vẫn fail và volume lỗi từ lần trước: xóa PVC `jenkins-management` trong `jenkins` (**mất home Jenkins**) rồi để Argo tạo lại.
 
-Mật khẩu admin lần đầu: xem Secret do chart Jenkins tạo trong namespace `jenkins` (hoặc output `helm get notes` sau khi Argo sync xong).
+**`app wait --health`**: Argo chỉ Healthy khi StatefulSet xong; Jenkins + plugin có thể Progressing lâu — đừng hard-code expect Healthy trong vài phút.
 
 ---
 

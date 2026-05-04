@@ -31,3 +31,13 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+
+  # Jenkins Secret đổi sau runtime → Argo báo OutOfSync nếu không bỏ qua drift /data.
+  # Sau khi sửa block này: kubectl apply -f argocd/bootstrap/22-jenkins-mgmt.yaml rồi Refresh/Hard refresh app trên Argo.
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: jenkins-management
+      namespace: jenkins
+      jsonPointers:
+        - /data

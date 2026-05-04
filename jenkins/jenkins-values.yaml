@@ -1,12 +1,29 @@
 # Cấu hình values cho Jenkins Helm Chart
 controller:
-  # Cài đặt các plugin cơ bản để chạy Pipeline và kết nối Git
+  # Chart 5.1.20 để image jenkins/jenkins ~2.452.1; dependency của workflow/git/casc hiện đòi core ≥ 2.479.x.
+  image:
+    tag: "2.479.3-lts-jdk17"
+
+  # Trùng version default của chart Jenkins 5.1.20 (jenkins/jenkins-values.yaml trong chart).
+  # List lệch version với image chart → init container (jenkins-plugin-cli) hay CrashLoop.
   installPlugins:
-    - kubernetes:4262.v2d8e4043fb_1a_
+    - kubernetes:4230.vceef11cb_ca_37
     - workflow-aggregator:596.v8c21c963d92d
     - git:5.2.2
-    - configuration-as-code:1810.v9b_c30a_249a_4c
-    
+    - configuration-as-code:1807.v0175eda_00a_20
+
+  # Giảm fetch “latest deps” — ít lỗi mạng / ít biến động khi bootstrap Kind.
+  installLatestPlugins: false
+
+  # Init `init` chạy jenkins-plugin-cli — mặc định chart để rỗng/ít RAM → dễ OOM → CrashLoop.
+  initContainerResources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "3Gi"
+
   # Cấu hình Persistent Volume để lưu trữ dữ liệu Jenkins (Jobs, History, Configs)
   persistence:
     enabled: true
