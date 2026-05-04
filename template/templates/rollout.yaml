@@ -30,6 +30,10 @@ spec:
       previewService: {{ $rolloutCfg.blueGreen.previewService | default (printf "%s-preview" (include "template.fullname" .) ) }}
       autoPromotionEnabled: {{ $rolloutCfg.blueGreen.autoPromotionEnabled | default true }}
       scaleDownDelaySeconds: {{ $rolloutCfg.blueGreen.scaleDownDelaySeconds | default 30 }}
+      {{- if $rolloutCfg.blueGreen.prePromotionAnalysis }}
+      prePromotionAnalysis:
+        {{- tpl (toYaml $rolloutCfg.blueGreen.prePromotionAnalysis) . | nindent 8 }}
+      {{- end }}
     {{- else }}
     {{- $stableSvc := $rolloutCfg.canary.stableService | default (include "template.fullname" .) }}
     {{- $canarySvc := $rolloutCfg.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .)) }}
