@@ -83,12 +83,16 @@ argocd --grpc-web account get-user-info
 
 Application: `argocd/bootstrap/22-jenkins-mgmt.yaml` → Service **`jenkins-management`** (không phải `jenkins`). Chưa có MetalLB thì `EXTERNAL-IP` trống là **bình thường** — dùng port-forward.
 
+Job mẫu **go-micro** (kết nối GitHub) được khai báo bằng **JCasC + Job DSL** trong `jenkins/jenkins-values.yaml` (`configScripts`); pipeline thật nằm ở **`Jenkinsfile`** ở root repo. Repo **private** cần thêm **credentials** trong JCasC + `remote { credentials('id') }` (không commit token).
+
 ```bash
 kubectl config use-context kind-management
 kubectl apply -f argocd/bootstrap/22-jenkins-mgmt.yaml
 argocd --grpc-web app sync jenkins-management && argocd --grpc-web app wait jenkins-management --sync --timeout 300
 kubectl -n jenkins get svc,pods
-kubectl -n jenkins port-forward svc/jenkins-management 8080:8080   # http://localhost:8080 — admin password: kubectl -n jenkins get secret jenkins-management -o yaml
+kubectl -n jenkins port-forward svc/jenkins-management 8081:8080
+# http://localhost:8080 — user: admin; password (đã decode sẵn):
+kubectl -n jenkins get secret jenkins-management -o jsonpath='{.data.jenkins-admin-password}' | base64 -d && echo
 ```
 
 Pod **`Init:CrashLoopBackOff`**: thường do init tên **`init`** (cài plugin). Chart còn init **`config-reload-init`** (sidecar) — **không dùng `initContainers[0]`** (sẽ lộn sang sidecar, log sẽ là JSON “Starting collector”).
@@ -102,7 +106,7 @@ kubectl -n jenkins logs jenkins-management-0 -c init --previous --tail=100
 
 Nếu vẫn crash: xem `describe` dòng **Last State: OOMKilled** — tăng `controller.initContainerResources` trong `jenkins/jenkins-values.yaml` (repo đã set sẵn limit RAM cho init).
 
-Hay gặp: **version plugin không khớp image/chart** → init `jenkins-plugin-cli` fail (log kiểu `requires a greater version of Jenkins (2.479.x)`). Tăng **`controller.image.tag`** trong `jenkins/jenkins-values.yaml` cho ≥ version đó (repo đang pin **`2.479.3-lts-jdk17`** với chart `5.1.20`). Sau khi push + sync mà vẫn CrashLoop: `kubectl -n jenkins delete pod jenkins-management-0`; vẫn fail và volume lỗi từ lần trước: xóa PVC `jenkins-management` trong `jenkins` (**mất home Jenkins**) rồi để Argo tạo lại.
+Hay gặp: **version plugin không khớp image/chart** → init `jenkins-plugin-cli` fail (log kiểu `requires a greater version of Jenkins (2.479.x)`). Tăng **`controller.image.tag`** trong `jenkins/jenkins-values.yaml` cho ≥ version đó (repo đang pin **`2.479.3-lts-jdk17`** với chart `5.1.20`). Sau khi push + sync, xem `describe pod` / Events: nếu init vẫn **Pulling `jenkins:2.452.1-*`** thì pod cũ chưa lên spec mới — `kubectl -n jenkins delete pod jenkins-management-0 --wait=false` rồi đợi pod mới (init phải dùng cùng tag với main container). Vẫn CrashLoop / volume hỏng: xóa PVC `jenkins-management` trong `jenkins` (**mất home Jenkins**) rồi để Argo tạo lại.
 
 **`app wait --health`**: Argo chỉ Healthy khi StatefulSet xong; Jenkins + plugin có thể Progressing lâu — đừng hard-code expect Healthy trong vài phút.
 

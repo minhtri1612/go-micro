@@ -11,6 +11,8 @@ controller:
     - workflow-aggregator:596.v8c21c963d92d
     - git:5.2.2
     - configuration-as-code:1807.v0175eda_00a_20
+    # Tạo job từ YAML (JCasC block `jobs:`) — khai báo pipeline GitHub dưới dạng code.
+    - job-dsl:1.87
 
   # Giảm fetch “latest deps” — ít lỗi mạng / ít biến động khi bootstrap Kind.
   installLatestPlugins: false
@@ -30,6 +32,9 @@ controller:
     storageClass: standard
     size: "10Gi"
     
+  # Cho phép chạy pipeline trên controller (Kind/demo). Agent K8s riêng có thể đặt lại 0.
+  numExecutors: 1
+
   # Đặt múi giờ cho Jenkins
   javaOpts: "-Duser.timezone=Asia/Ho_Chi_Minh"
   
@@ -42,9 +47,30 @@ controller:
     # annotations:
     #   traefik.ingress.kubernetes.io/router.entrypoints: web
   
-  # Cấu hình JCasC (Jenkins Configuration as Code) cơ bản nếu cần
+  # JCasC: defaultConfig + job DSL — job "go-micro" trỏ GitHub + Jenkinsfile ở root repo.
   JCasC:
     defaultConfig: true
+    configScripts:
+      01-github-pipeline-job: |
+        jobs:
+          - script: |
+              pipelineJob('go-micro') {
+                displayName('go-micro (GitHub)')
+                definition {
+                  cpsScm {
+                    lightweight(true)
+                    scm {
+                      git {
+                        remote {
+                          url('https://github.com/minhtri1612/go-micro.git')
+                        }
+                        branch('*/main')
+                      }
+                    }
+                    scriptPath('Jenkinsfile')
+                  }
+                }
+              }
 
   # Cấu hình tài nguyên để tránh Jenkins nuốt quá nhiều RAM trên cụm Kind
   resources:
