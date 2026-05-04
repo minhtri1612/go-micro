@@ -20,7 +20,7 @@ inventory:
 
 order:
   image:
-    tag: "order-service-v1.0.1"
+    tag: "order-service-v1.0.3"
   replicaCount: 6
   rollout:
     enabled: true
