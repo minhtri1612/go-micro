@@ -662,6 +662,7 @@ rollout:
         args:
           - name: service-name
           - name: service-target
+            value: '{{ `{{` }}args.service-name{{ `}}` }}-canary'
         metrics:
           - name: load-generator-k6
             count: 1
