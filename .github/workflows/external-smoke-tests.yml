@@ -2,7 +2,10 @@
 #
 # - pull_request: chỉ kiểm tra cú pháp shell (không cần cluster).
 # - workflow_dispatch: chạy curl/k6 từ runner — cần backend/ingress tới được từ internet
-#   (hoặc self-hosted runner trong VPC). Xem mô tả inputs bên dưới.
+#   (hoặc self-hosted runner trong VPC).
+#
+# Quan trọng: input `services` — để `all` thì chạy full matrix; để `product` hoặc
+# `product,inventory` thì chỉ chạy đúng service đó (không liên quan tới việc bạn đổi tag trong env/dev.yaml).
 name: External smoke tests
 
 on:
@@ -12,6 +15,10 @@ on:
       - ".github/workflows/external-smoke-tests.yml"
   workflow_dispatch:
     inputs:
+      services:
+        description: 'Chạy test cho service nào. `all` = full matrix. Hoặc CSV: product | product,inventory | order,...'
+        required: false
+        default: "all"
       backend_host:
         description: "Host/IP mà từ runner curl được tới đúng port từng service (8080 product, 8081 order, …) — ví dụ sau port-forward hoặc LB nội bộ."
         required: true
@@ -60,15 +67,71 @@ jobs:
           done
           chmod +x tests/*/run.sh || true
 
-  route-smoke:
-    name: Route smoke (${{ matrix.service }}, ${{ matrix.mode }})
+  # Chỉ chạy khi workflow_dispatch: sinh JSON matrix theo input services.
+  prepare-matrices:
+    name: Prepare service matrix
     needs: validate-shell
     if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      route_services: ${{ steps.gen.outputs.route_services }}
+      route_count: ${{ steps.gen.outputs.route_count }}
+      business_services: ${{ steps.gen.outputs.business_services }}
+      business_count: ${{ steps.gen.outputs.business_count }}
+      dependency_services: ${{ steps.gen.outputs.dependency_services }}
+      dependency_count: ${{ steps.gen.outputs.dependency_count }}
+      target_services: ${{ steps.gen.outputs.target_services }}
+      target_count: ${{ steps.gen.outputs.target_count }}
+      k6_services: ${{ steps.gen.outputs.k6_services }}
+      k6_count: ${{ steps.gen.outputs.k6_count }}
+    steps:
+      - id: gen
+        env:
+          SERVICES: ${{ github.event.inputs.services }}
+        run: |
+          set -euo pipefail
+          OUT=$(jq -n --arg s "${SERVICES:-all}" '
+            def filt($allow; $raw):
+              ($raw | ascii_downcase | gsub("^\\s+|\\s+$";"")) as $t
+              | if ($t == "" or $t == "all") then $allow
+                else
+                  ($t | split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))) as $u
+                  | $allow | map(select(. as $x | $u | index($x) != null))
+                end;
+            def route: ["product","inventory","order","payment","noti"];
+            def business: ["product","inventory","payment","noti"];
+            def target: ["product","inventory","order","payment","noti","client"];
+            def k6: ["product","inventory","order","payment","noti"];
+            {
+              route: filt(route; $s),
+              business: filt(business; $s),
+              dependency: filt(business; $s),
+              target: filt(target; $s),
+              k6: filt(k6; $s)
+            }
+          ')
+          echo "$OUT" | jq .
+
+          echo "route_services=$(echo "$OUT" | jq -c '.route')" >> "$GITHUB_OUTPUT"
+          echo "route_count=$(echo "$OUT" | jq '.route | length')" >> "$GITHUB_OUTPUT"
+          echo "business_services=$(echo "$OUT" | jq -c '.business')" >> "$GITHUB_OUTPUT"
+          echo "business_count=$(echo "$OUT" | jq '.business | length')" >> "$GITHUB_OUTPUT"
+          echo "dependency_services=$(echo "$OUT" | jq -c '.dependency')" >> "$GITHUB_OUTPUT"
+          echo "dependency_count=$(echo "$OUT" | jq '.dependency | length')" >> "$GITHUB_OUTPUT"
+          echo "target_services=$(echo "$OUT" | jq -c '.target')" >> "$GITHUB_OUTPUT"
+          echo "target_count=$(echo "$OUT" | jq '.target | length')" >> "$GITHUB_OUTPUT"
+          echo "k6_services=$(echo "$OUT" | jq -c '.k6')" >> "$GITHUB_OUTPUT"
+          echo "k6_count=$(echo "$OUT" | jq '.k6 | length')" >> "$GITHUB_OUTPUT"
+
+  route-smoke:
+    name: Route smoke (${{ matrix.service }}, ${{ matrix.mode }})
+    needs: [validate-shell, prepare-matrices]
+    if: github.event_name == 'workflow_dispatch' && needs.prepare-matrices.outputs.route_count != '0'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service: [product, inventory, order, payment, noti]
+        service: ${{ fromJson(needs.prepare-matrices.outputs.route_services) }}
         mode: [canary, preview]
     steps:
       - uses: actions/checkout@v4
@@ -95,14 +158,13 @@ jobs:
 
   business-smoke:
     name: Business smoke (${{ matrix.service }})
-    needs: validate-shell
-    if: github.event_name == 'workflow_dispatch'
+    needs: [validate-shell, prepare-matrices]
+    if: github.event_name == 'workflow_dispatch' && needs.prepare-matrices.outputs.business_count != '0'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # order gọi http://product và http://inventory — chỉ chạy được khi runner resolve được các hostname đó (thường là trong cluster/VPC).
-        service: [product, inventory, payment, noti]
+        service: ${{ fromJson(needs.prepare-matrices.outputs.business_services) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -114,13 +176,13 @@ jobs:
 
   dependency-check:
     name: Dependency check (${{ matrix.service }})
-    needs: validate-shell
-    if: github.event_name == 'workflow_dispatch'
+    needs: [validate-shell, prepare-matrices]
+    if: github.event_name == 'workflow_dispatch' && needs.prepare-matrices.outputs.dependency_count != '0'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service: [product, inventory, payment, noti]
+        service: ${{ fromJson(needs.prepare-matrices.outputs.dependency_services) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -132,13 +194,13 @@ jobs:
 
   target-smoke:
     name: Target smoke (${{ matrix.service }})
-    needs: validate-shell
-    if: github.event_name == 'workflow_dispatch'
+    needs: [validate-shell, prepare-matrices]
+    if: github.event_name == 'workflow_dispatch' && needs.prepare-matrices.outputs.target_count != '0'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service: [product, inventory, order, payment, noti, client]
+        service: ${{ fromJson(needs.prepare-matrices.outputs.target_services) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -150,13 +212,13 @@ jobs:
 
   k6-load:
     name: k6 load (${{ matrix.service }})
-    needs: validate-shell
-    if: github.event_name == 'workflow_dispatch'
+    needs: [validate-shell, prepare-matrices]
+    if: github.event_name == 'workflow_dispatch' && needs.prepare-matrices.outputs.k6_count != '0'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service: [product, inventory, order, payment, noti]
+        service: ${{ fromJson(needs.prepare-matrices.outputs.k6_services) }}
     steps:
       - uses: actions/checkout@v4
 
