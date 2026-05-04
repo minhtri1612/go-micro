@@ -1,0 +1,46 @@
+# Cấu hình values cho Jenkins Helm Chart
+controller:
+  # Cài đặt các plugin cơ bản để chạy Pipeline và kết nối Git
+  installPlugins:
+    - kubernetes:4262.v2d8e4043fb_1a_
+    - workflow-aggregator:596.v8c21c963d92d
+    - git:5.2.2
+    - configuration-as-code:1810.v9b_c30a_249a_4c
+    
+  # Cấu hình Persistent Volume để lưu trữ dữ liệu Jenkins (Jobs, History, Configs)
+  persistence:
+    enabled: true
+    storageClass: standard
+    size: "10Gi"
+    
+  # Đặt múi giờ cho Jenkins
+  javaOpts: "-Duser.timezone=Asia/Ho_Chi_Minh"
+  
+  # Tạo Ingress để truy cập UI nếu muốn. 
+  # Ở đây tạm thời disabled để dùng port-forward cho an toàn. Bạn có thể tự mở lên sau.
+  ingress:
+    enabled: false
+    # apiVersion: networking.k8s.io/v1
+    # hostName: jenkins.go-micro.local
+    # annotations:
+    #   traefik.ingress.kubernetes.io/router.entrypoints: web
+  
+  # Cấu hình JCasC (Jenkins Configuration as Code) cơ bản nếu cần
+  JCasC:
+    defaultConfig: true
+
+  # Cấu hình tài nguyên để tránh Jenkins nuốt quá nhiều RAM trên cụm Kind
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+
+# Phân quyền cho Agent (Kubernetes plugin) để có thể chạy kubectl/helm bên trong pipeline
+serviceAccountAgent:
+  create: true
+  
+rbac:
+  create: true

@@ -79,6 +79,37 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 argocd --grpc-web account get-user-info
 ```
 
+### 2.1) Install Jenkins on management (GitOps bằng YAML)
+
+Nếu bạn dùng Jenkins để build/push image và bump tag `env/*.yaml`, nên cài **ngay sau Argo CD** (trước bootstrap app workload). Khuyến nghị dùng Argo CD Application trong repo: `argocd/bootstrap/22-jenkins-mgmt.yaml` (tên Application trên Argo: **`jenkins-management`**).
+
+**Lưu ý:** Để có URL kiểu LoadBalancer (`EXTERNAL-IP`), management cluster thường đã cần **MetalLB** (và đã sync đúng pool IP như các bước Metallb / cilium sau trong README). Nếu chưa có LB, truy cập Jenkins bằng **`kubectl port-forward`** tới `Service` `jenkins` trong namespace `jenkins`.
+
+```bash
+kubectl config use-context kind-management
+
+kubectl apply -f argocd/bootstrap/22-jenkins-mgmt.yaml
+argocd --grpc-web app sync jenkins-management
+argocd --grpc-web app wait jenkins-management --health --sync --timeout 600
+kubectl --context kind-management -n jenkins get svc jenkins
+# Kiểm tra cột EXTERNAL-IP (sau MetalLB). Ví dụ lab: 172.18.255.49 — có thể khác máy bạn.
+```
+
+Jenkins URL (ưu tiên lấy IP thực tế từ Service):
+
+```bash
+# In URL từ EXTERNAL-IP hiện có (rỗng nếu chưa có LoadBalancer)
+IP=$(kubectl --context kind-management -n jenkins get svc jenkins -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "http://${IP}:8080"
+```
+
+Hoặc khi đã biết IP MetalLB management (ví dụ `172.18.255.49`):
+
+```bash
+echo "http://172.18.255.49:8080"
+```
+
+Mật khẩu admin lần đầu: xem Secret do chart Jenkins tạo trong namespace `jenkins` (hoặc output `helm get notes` sau khi Argo sync xong).
 
 ---
 
