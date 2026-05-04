@@ -1,0 +1,173 @@
+# External smoke tests (scripts under tests/).
+#
+# - pull_request: chỉ kiểm tra cú pháp shell (không cần cluster).
+# - workflow_dispatch: chạy curl/k6 từ runner — cần backend/ingress tới được từ internet
+#   (hoặc self-hosted runner trong VPC). Xem mô tả inputs bên dưới.
+name: External smoke tests
+
+on:
+  pull_request:
+    paths:
+      - "tests/**"
+      - ".github/workflows/external-smoke-tests.yml"
+  workflow_dispatch:
+    inputs:
+      backend_host:
+        description: "Host/IP mà từ runner curl được tới đúng port từng service (8080 product, 8081 order, …) — ví dụ sau port-forward hoặc LB nội bộ."
+        required: true
+        default: "127.0.0.1"
+      route_host:
+        description: "Host dùng cho route smoke (URL + header Host), ví dụ dev.go-micro.local."
+        required: true
+        default: "dev.go-micro.local"
+      route_ip:
+        description: "Nếu nhập IP, workflow sẽ ghi /etc/hosts để route_host resolve được trên runner (tuỳ chọn)."
+        required: false
+        default: ""
+      k6_vus:
+        description: "k6 virtual users"
+        required: false
+        default: "5"
+      k6_duration:
+        description: "k6 duration"
+        required: false
+        default: "15s"
+      k6_error_rate:
+        description: "k6 http_req_failed threshold (rate<value)"
+        required: false
+        default: "0.1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-shell:
+    name: Validate test scripts (syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: sh -n on all test shell scripts
+        run: |
+          set -euo pipefail
+          find tests -type f -name "*.sh" -print | while read -r f; do
+            echo "==> sh -n $f"
+            sh -n "$f"
+          done
+          chmod +x tests/*/run.sh || true
+
+  route-smoke:
+    name: Route smoke (${{ matrix.service }}, ${{ matrix.mode }})
+    needs: validate-shell
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [product, inventory, order, payment, noti]
+        mode: [canary, preview]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Optional /etc/hosts for route_host
+        if: ${{ github.event.inputs.route_ip != '' }}
+        run: |
+          set -euo pipefail
+          echo "${{ github.event.inputs.route_ip }} ${{ github.event.inputs.route_host }}" | sudo tee -a /etc/hosts
+
+      - name: Route smoke
+        run: |
+          set -euo pipefail
+          chmod +x tests/route-smoke-test/run.sh
+          case "${{ matrix.service }}" in
+            product) PREFIX=/api/v1/products ;;
+            inventory) PREFIX=/api/v1/inventory ;;
+            order) PREFIX=/api/v1/orders ;;
+            payment) PREFIX=/api/v1/payments ;;
+            noti) PREFIX=/api/v1/notifications ;;
+            *) echo "unknown service"; exit 1 ;;
+          esac
+          tests/route-smoke-test/run.sh "${{ github.event.inputs.route_host }}" "$PREFIX" "${{ matrix.mode }}"
+
+  business-smoke:
+    name: Business smoke (${{ matrix.service }})
+    needs: validate-shell
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # order gọi http://product và http://inventory — chỉ chạy được khi runner resolve được các hostname đó (thường là trong cluster/VPC).
+        service: [product, inventory, payment, noti]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Business smoke
+        run: |
+          set -euo pipefail
+          chmod +x tests/business-smoke/run.sh
+          tests/business-smoke/run.sh "${{ matrix.service }}" "${{ github.event.inputs.backend_host }}"
+
+  dependency-check:
+    name: Dependency check (${{ matrix.service }})
+    needs: validate-shell
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [product, inventory, payment, noti]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency check
+        run: |
+          set -euo pipefail
+          chmod +x tests/dependency-check/run.sh
+          tests/dependency-check/run.sh "${{ matrix.service }}" "${{ github.event.inputs.backend_host }}"
+
+  target-smoke:
+    name: Target smoke (${{ matrix.service }})
+    needs: validate-shell
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [product, inventory, order, payment, noti, client]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Target smoke (pod/service trực tiếp)
+        run: |
+          set -euo pipefail
+          chmod +x tests/target-smoke-test/run.sh
+          tests/target-smoke-test/run.sh "${{ matrix.service }}" "${{ github.event.inputs.backend_host }}"
+
+  k6-load:
+    name: k6 load (${{ matrix.service }})
+    needs: validate-shell
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [product, inventory, order, payment, noti]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run k6
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e SERVICE_NAME="${{ matrix.service }}" \
+            -e TARGET_URL="${{ github.event.inputs.backend_host }}" \
+            -e VUS="${{ github.event.inputs.k6_vus }}" \
+            -e DURATION="${{ github.event.inputs.k6_duration }}" \
+            -e ERROR_RATE="${{ github.event.inputs.k6_error_rate }}" \
+            -v "${GITHUB_WORKSPACE}/tests/load-test:/scripts:ro" \
+            grafana/k6:latest run /scripts/k6-script.js

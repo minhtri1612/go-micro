@@ -36,46 +36,11 @@ rollout:
   canary:
     steps:
       - setWeight: 10
-      - analysis:
-          templates:
-            - templateName: '{{ include "template.fullname" . }}-route-smoke-test'
-          args:
-            - name: service-name
-              value: '{{ include "template.fullname" . }}'
-            - name: service-port
-              value: '{{ .Values.service.port }}'
-            - name: hostname
-              value: '{{ .Values.traefik.hostname }}'
-            - name: path-prefix
-              value: '{{ .Values.traefik.pathPrefix | default "" }}'
-      - analysis:
-          templates:
-            - templateName: '{{ include "template.fullname" . }}-business-smoke'
-          args:
-            - name: service-name
-              value: '{{ include "template.fullname" . }}'
-            - name: service-target
-              value: '{{ include "template.fullname" . }}-canary'
-      - analysis:
-          templates:
-            - templateName: '{{ include "template.fullname" . }}-dependency-check'
-          args:
-            - name: service-name
-              value: '{{ include "template.fullname" . }}'
-            - name: service-target
-              value: '{{ include "template.fullname" . }}-canary'
-      - analysis:
-          templates:
-            - templateName: '{{ include "template.fullname" . }}-synthetic-load'
-          args:
-            - name: service-name
-              value: '{{ include "template.fullname" . }}'
-      # Wave 3: 20% - Prometheus gate chặt hơn, pause lâu hơn
-      - setWeight: 20
       - pause:
-          duration: 5m
+          duration: 2m
       - analysis:
           templates:
+            - templateName: '{{ include "template.fullname" . }}-latency-check'
             - templateName: '{{ include "template.fullname" . }}-success-rate'
           args:
             - name: service-name
