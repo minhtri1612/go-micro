@@ -51,8 +51,9 @@ spec:
   entryPoints:
     {{- toYaml .Values.traefik.entryPoints | nindent 4 }}
   routes:
-    - match: Host(`{{ .Values.traefik.hostname }}`) && HeaderRegexp(`X-Preview`, `true`)
+    - match: Host(`{{ .Values.traefik.hostname }}`) && PathPrefix(`{{ .Values.traefik.pathPrefix | default "/" }}`) && HeaderRegexp(`X-Preview`, `true`)
       kind: Rule
+      priority: 100
       middlewares:
 {{- $stripPrefixes := .Values.traefik.stripPrefixes | default list }}
 {{- if gt (len $stripPrefixes) 0 }}
