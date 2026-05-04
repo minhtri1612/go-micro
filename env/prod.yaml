@@ -8,7 +8,7 @@ product:
   replicaCount: 3
   rollout:
     enabled: true
-    strategy: bluegreen
+    strategy: canary
 
 inventory:
   image:
@@ -16,7 +16,7 @@ inventory:
   replicaCount: 3
   rollout:
     enabled: true
-    strategy: bluegreen
+    strategy: canary
 
 order:
   image:
@@ -24,7 +24,7 @@ order:
   replicaCount: 5
   rollout:
     enabled: true
-    strategy: bluegreen
+    strategy: canary
 
 payment:
   image:
@@ -32,7 +32,7 @@ payment:
   replicaCount: 5
   rollout:
     enabled: true
-    strategy: bluegreen
+    strategy: canary
 
 noti:
   image:
@@ -40,7 +40,7 @@ noti:
   replicaCount: 3
   rollout:
     enabled: true
-    strategy: bluegreen
+    strategy: canary
 
 client:
   image:
@@ -48,7 +48,7 @@ client:
   replicaCount: 3
   rollout:
     enabled: true
-    strategy: bluegreen
+    strategy: canary
 
 # Database services
 product-db:
