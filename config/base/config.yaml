@@ -801,7 +801,7 @@ rollout:
   blueGreen:
     activeService: ""
     previewService: ""
-    autoPromotionEnabled: false
+    autoPromotionEnabled: true
     scaleDownDelaySeconds: 30
     prePromotionAnalysis:
       templates:
