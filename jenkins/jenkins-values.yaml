@@ -6,6 +6,9 @@ controller:
     tag: "2.492.3-lts-jdk17-pkg1"
     pullPolicy: IfNotPresent
 
+  adminUser: "admin"
+  adminPassword: "admin"
+
   # Plugin đã bake trong image — init không tải từ Update Center (tránh chờ dài).
   installPlugins: []
 
