@@ -1,0 +1,6 @@
+# Đồng bộ chart; đổi version → build lại image. Core image phải ≥ version transitive deps (CasC/groovy-api…).
+kubernetes:4230.vceef11cb_ca_37
+workflow-aggregator:596.v8c21c963d92d
+git:5.2.2
+configuration-as-code:1963.v24e046127a_3f
+job-dsl:1.87

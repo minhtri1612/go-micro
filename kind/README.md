@@ -83,6 +83,17 @@ argocd --grpc-web account get-user-info
 
 Application: `argocd/bootstrap/22-jenkins-mgmt.yaml` → Service **`jenkins-management`** (không phải `jenkins`). Chưa có MetalLB thì `EXTERNAL-IP` trống là **bình thường** — dùng port-forward.
 
+**Chỉ để mở UI trên laptop (đừng nhầm cổng):**
+
+| Công cụ | URL trong trình duyệt | `port-forward` (ví dụ) |
+|--------|-------------------------|-------------------------|
+| **Argo CD** | **`http://localhost:8080`** | `8080:443` |
+| **Jenkins** | **`http://localhost:8081`** | `8081:8080` |
+
+**Jenkins không bao giờ mở bằng `localhost:8080`** — **8080 trên máy là Argo.** Phần **`8081:8080`** nghĩa là: máy bạn dùng cổng **8081**, còn số **8080** sau dấu hai chấm là **cổng của Jenkins trong cluster** (target của Service), không phải URL trên Chrome. Debug **bên trong pod** Jenkins (không phải trình duyệt) khi đó mới gọi process Jenkins qua cổng **8080** trong container.
+
+**Mật khẩu đăng nhập Jenkins (port 8081 trên máy):** Cổng **8081 chỉ là port-forward** — **không “nằm ở” 8081, cũng không lưu password ở đó.** Lấy pass từ Secret **`jenkins-management`** / key **`jenkins-admin-password`** (lệnh trong block dưới). User: **`admin`**. Pass hiển thị trong Secret **có thể không khớp** PVC nếu đã đổi pass trên UI hoặc home cũ — xem khối **“Đăng nhập vẫn báo sai…”** ngay sau block bash.
+
 Job mẫu **go-micro** (kết nối GitHub) được khai báo bằng **JCasC + Job DSL** trong `jenkins/jenkins-values.yaml` (`configScripts`); pipeline thật nằm ở **`Jenkinsfile`** ở root repo. Repo **private** cần thêm **credentials** trong JCasC + `remote { credentials('id') }` (không commit token).
 
 ```bash
@@ -90,9 +101,26 @@ kubectl config use-context kind-management
 kubectl apply -f argocd/bootstrap/22-jenkins-mgmt.yaml
 argocd --grpc-web app sync jenkins-management && argocd --grpc-web app wait jenkins-management --sync --timeout 300
 kubectl -n jenkins get svc,pods
+# Jenkins: cổng máy 8081 (tránh đụng Argo 8080). Đăng nhập user admin + password lệnh dưới.
 kubectl -n jenkins port-forward svc/jenkins-management 8081:8080
-# http://localhost:8080 — user: admin; password (đã decode sẵn):
 kubectl -n jenkins get secret jenkins-management -o jsonpath='{.data.jenkins-admin-password}' | base64 -d && echo
+```
+
+**Đăng nhập vẫn báo sai dù đã decode Secret đúng:** Jenkins không đọc pass trực tiếp từ Secret mỗi lần đăng nhập — pass thật nằm trong **`/var/jenkins_home`** (PVC). Secret chỉ khớp **lần khởi tạo đầu** (hoặc khi home trống). PVC cũ / đã đổi pass trên UI → hash trong PVC **lệch** Secret → decode Secret **không** vào được.
+
+**Cách làm sạch lab (xóa home Jenkins — mất job/config trên volume):** scale StatefulSet về 0, xóa PVC, bật lại pod; bootstrap lại dùng pass trong Secret hiện tại.
+
+Sau khi **xóa PVC**, init `jenkins-plugin-cli` tải lại toàn bộ plugin — trên Kind thường **15–30 phút** mới **Ready 2/2** (10 phút vẫn bình thường nếu vẫn `Init:0/1` / `0/2`). **Đừng dùng `wait --timeout=600s`** rồi tưởng hỏng; tăng timeout hoặc `get pods -w` tới khi **2/2 Running**.
+
+```bash
+kubectl -n jenkins scale statefulset jenkins-management --replicas=0
+kubectl -n jenkins wait --for=delete pod/jenkins-management-0 --timeout=180s
+kubectl -n jenkins delete pvc jenkins-management
+kubectl -n jenkins scale statefulset jenkins-management --replicas=1
+# Chờ Ready tối đa 40 phút (lần đầu sau wipe hay lâu hơn 10p):
+kubectl -n jenkins wait --for=condition=ready pod/jenkins-management-0 --timeout=2400s
+# Hoặc bỏ dòng wait, tự theo dõi:  kubectl -n jenkins get pods -w
+kubectl -n jenkins get secret jenkins-management -o jsonpath='{.data.jenkins-admin-password}' | base64 -d && echo   # pass cho http://localhost:8081 — user admin
 ```
 
 Pod **`Init:CrashLoopBackOff`**: thường do init tên **`init`** (cài plugin). Chart còn init **`config-reload-init`** (sidecar) — **không dùng `initContainers[0]`** (sẽ lộn sang sidecar, log sẽ là JSON “Starting collector”).
