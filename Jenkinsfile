@@ -79,15 +79,25 @@ pipeline {
       when {
         expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
       }
-      parallel {
-        stage('canary') {
-          steps {
+      steps {
+        script {
+          // Lấy strategy từ config/env/dev.yaml, mặc định là canary nếu không tìm thấy
+          def strategy = sh(
+            script: "grep -A 2 '^rollout:' config/env/dev.yaml | grep 'strategy:' | awk '{print \\$2}' || echo 'canary'",
+            returnStdout: true
+          ).trim().toLowerCase()
+          
+          echo "Detected Rollout Strategy from dev.yaml: ${strategy}"
+          
+          if (strategy == 'canary') {
+            echo "Running Route Smoke Test for Canary (X-Canary: true)"
             sh "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} canary ${params.BACKEND_IP}"
-          }
-        }
-        stage('preview') {
-          steps {
+          } else if (strategy == 'bluegreen') {
+            echo "Running Route Smoke Test for Preview (X-Preview: true)"
             sh "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} preview ${params.BACKEND_IP}"
+          } else {
+            echo "Unknown strategy: ${strategy}. Defaulting to canary."
+            sh "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} canary ${params.BACKEND_IP}"
           }
         }
       }
