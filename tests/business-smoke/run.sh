@@ -7,15 +7,15 @@ TARGET="${2:-localhost}"
 
 echo "Running Business Smoke Test for Service: $SERVICE against Target: $TARGET"
 
-svc_port() {
+svc_prefix() {
   case "$1" in
-    product) echo 8080 ;;
-    order) echo 8081 ;;
-    inventory) echo 8082 ;;
-    noti) echo 8083 ;;
-    payment) echo 8084 ;;
-    client) echo 80 ;;
-    *) echo 8080 ;;
+    product) echo /api/v1/products ;;
+    order) echo /api/v1/orders ;;
+    inventory) echo /api/v1/inventory ;;
+    noti) echo /api/v1/notifications ;;
+    payment) echo /api/v1/payments ;;
+    client) echo / ;;
+    *) echo /api/v1/products ;;
   esac
 }
 
@@ -26,9 +26,9 @@ curl_retry() {
   local tries=0
   while [ $tries -lt 10 ]; do
     if [ -n "$body" ]; then
-      RESP=$(curl -sS -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+      RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
     else
-      RESP=$(curl -sS -X "$method" "$url") && { echo "$RESP"; return 0; }
+      RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url") && { echo "$RESP"; return 0; }
     fi
     tries=$((tries+1))
     sleep 3
@@ -59,7 +59,7 @@ assert_any_contains() {
 
 case "$SERVICE" in
   product)
-    BASE="http://${TARGET}:$(svc_port "$SERVICE")"
+    BASE="http://${TARGET}$(svc_prefix "$SERVICE")"
     NAME="canary-smoke-${RANDOM}"
     CREATE_BODY=$(curl_retry "$BASE/products" "POST" "{\"name\":\"$NAME\",\"description\":\"canary-smoke\",\"price\":11.11}")
     echo "[DBG] product create: $CREATE_BODY"
@@ -72,9 +72,9 @@ case "$SERVICE" in
     assert_contains "product.get.id" "\"id\":$PRODUCT_ID" "$GET_BODY"
     ;;
   inventory)
-    BASE="http://${TARGET}:$(svc_port "$SERVICE")"
+    BASE="http://${TARGET}$(svc_prefix "$SERVICE")"
     PID=$((1000 + RANDOM % 9000))
-    CREATE_BODY=$(curl -sS -X POST "$BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":20,\"sku\":\"SKU-$PID\",\"location\":\"A1\"}")
+    CREATE_BODY=$(curl -sS -H "Host: dev.go-micro.local" -X POST "$BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":20,\"sku\":\"SKU-$PID\",\"location\":\"A1\"}")
     echo "[DBG] inventory create: $CREATE_BODY"
     INV_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
     assert_field "inventory.id" "$INV_ID" "$CREATE_BODY"
@@ -83,9 +83,9 @@ case "$SERVICE" in
     ;;
   order)
     # Seed product/inventory qua TARGET (arg2), không dùng hostname K8s — Jenkins/agent ngoài namespace không resolve được product/inventory.
-    P_BASE="http://${TARGET}:$(svc_port product)"
-    I_BASE="http://${TARGET}:$(svc_port inventory)"
-    O_BASE="http://${TARGET}:$(svc_port "$SERVICE")"
+    P_BASE="http://${TARGET}/api/v1/products"
+    I_BASE="http://${TARGET}/api/v1/inventory"
+    O_BASE="http://${TARGET}$(svc_prefix "$SERVICE")"
     PID=$(( $(date +%s) + RANDOM ))
     P_CREATE=$(curl_retry "$P_BASE/products" "POST" "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}")
     echo "[DBG] order seed product: $P_CREATE"
@@ -100,7 +100,7 @@ case "$SERVICE" in
     assert_contains "order.product_id" "\"product_id\":$REAL_PID" "$ORDER_BODY"
     ;;
   payment)
-    BASE="http://${TARGET}:$(svc_port "$SERVICE")"
+    BASE="http://${TARGET}$(svc_prefix "$SERVICE")"
     PAY_BODY=$(curl_retry "$BASE/payments/" "POST" '{"order_id":9001,"customer_id":1,"amount":10.5,"currency":"usd"}')
     echo "[DBG] payment create: $PAY_BODY"
     assert_contains "payment.key" "\"payment\"" "$PAY_BODY"
@@ -108,8 +108,8 @@ case "$SERVICE" in
     assert_contains "payment.currency" "usd" "$PAY_BODY"
     ;;
   noti)
-    BASE="http://${TARGET}:$(svc_port "$SERVICE")"
-    NOTI_BODY=$(curl -sS -X POST "$BASE/notifications" -H "Content-Type: application/json" -d '{"order_id":9001,"customer_id":1,"message":"canary smoke","status":"pending"}')
+    BASE="http://${TARGET}$(svc_prefix "$SERVICE")"
+    NOTI_BODY=$(curl -sS -H "Host: dev.go-micro.local" -X POST "$BASE/notifications" -H "Content-Type: application/json" -d '{"order_id":9001,"customer_id":1,"message":"canary smoke","status":"pending"}')
     echo "[DBG] noti create: $NOTI_BODY"
     NOTI_ID=$(echo "$NOTI_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
     assert_field "noti.id" "$NOTI_ID" "$NOTI_BODY"

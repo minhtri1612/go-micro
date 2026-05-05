@@ -17,9 +17,16 @@ export const options = {
   },
 };
 
-function targetPort(service) {
-  const ports = { product: 8080, order: 8081, inventory: 8082, noti: 8083, payment: 8084, client: 80 };
-  return ports[service] || 8080;
+function getPrefix(service) {
+  const prefixes = {
+    product: '/api/v1/products',
+    order: '/api/v1/orders',
+    inventory: '/api/v1/inventory',
+    noti: '/api/v1/notifications',
+    payment: '/api/v1/payments',
+    client: '/'
+  };
+  return prefixes[service] || '/api/v1/products';
 }
 
 function probePath(service) {
@@ -29,9 +36,14 @@ function probePath(service) {
 }
 
 export default function () {
-  const port = targetPort(service);
+  const prefix = getPrefix(service);
   const path = probePath(service);
-  let res = http.get(`http://${target}:${port}${path}`);
+  const params = {
+    headers: {
+      'Host': 'dev.go-micro.local'
+    }
+  };
+  let res = http.get(`http://${target}${prefix}${path}`, params);
   check(res, { 'status is 200': (r) => r.status === 200 });
   sleep(0.3);
 }
