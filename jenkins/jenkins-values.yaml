@@ -11,7 +11,8 @@ controller:
     password: "admin"
 
   # Plugin đã bake trong image — init không tải từ Update Center (tránh chờ dài).
-  installPlugins: []
+  installPlugins:
+    - pipeline-stage-view
 
   installLatestPlugins: false
 
