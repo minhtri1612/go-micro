@@ -83,7 +83,7 @@ pipeline {
         script {
           // Lấy strategy từ config/env/dev.yaml, mặc định là canary nếu không tìm thấy
           def strategy = sh(
-            script: "grep -A 2 '^rollout:' config/env/dev.yaml | grep 'strategy:' | awk '{print \\$2}' || echo 'canary'",
+            script: '''grep -A 2 '^rollout:' config/env/dev.yaml | grep 'strategy:' | awk '{print $2}' || echo 'canary' ''',
             returnStdout: true
           ).trim().toLowerCase()
           
