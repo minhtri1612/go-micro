@@ -106,14 +106,22 @@ pipeline {
     stage('Load Test (k6)') {
       steps {
         sh """
-          docker run --rm \\
-            -e TARGET_URL=${params.BACKEND_IP} \\
-            -e SERVICE_NAME=${params.K6_SERVICE_NAME} \\
-            -e VUS=${params.K6_VUS} \\
-            -e DURATION=${params.K6_DURATION} \\
-            -e ERROR_RATE=${params.K6_ERROR_RATE} \\
-            -v "${env.WORKSPACE}/tests/load-test:/scripts" \\
-            grafana/k6 run /scripts/k6-script.js
+          # Tải k6 binary trực tiếp thay vì dùng docker (vì Jenkins pod không có docker)
+          if [ ! -f ./k6 ]; then
+            curl -sS -L "https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz" -o k6.tar.gz
+            tar -xzf k6.tar.gz
+            mv k6-v0.49.0-linux-amd64/k6 ./k6
+          fi
+          
+          # Cấp quyền thực thi và chạy k6
+          chmod +x ./k6
+          export TARGET_URL=${params.BACKEND_IP}
+          export SERVICE_NAME=${params.K6_SERVICE_NAME}
+          export VUS=${params.K6_VUS}
+          export DURATION=${params.K6_DURATION}
+          export ERROR_RATE=${params.K6_ERROR_RATE}
+          
+          ./k6 run tests/load-test/k6-script.js
         """
       }
     }
