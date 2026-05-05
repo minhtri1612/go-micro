@@ -119,8 +119,9 @@ case "$SERVICE" in
     assert_contains "inventory.dep.delete" "deleted successfully" "$DEL_BODY"
     ;;
   order)
-    P_BASE="http://product:$(svc_port product)"
-    I_BASE="http://inventory:$(svc_port inventory)"
+    # Cùng TARGET với O_BASE — curl từ Jenkins jenkins/* namespace tới service IP:port, không dùng DNS pod product/inventory trong microservices-dev.
+    P_BASE="http://${TARGET}:$(svc_port product)"
+    I_BASE="http://${TARGET}:$(svc_port inventory)"
     O_BASE="http://${TARGET}:$(svc_port "$SERVICE")"
     PID=$(( $(date +%s) + RANDOM ))
 

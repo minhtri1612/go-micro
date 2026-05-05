@@ -82,9 +82,9 @@ case "$SERVICE" in
     assert_contains "inventory.sku" "SKU-$PID" "$CREATE_BODY"
     ;;
   order)
-    # Note: In an external CI pipeline, these dependencies must be resolvable.
-    P_BASE="http://product:$(svc_port product)"
-    I_BASE="http://inventory:$(svc_port inventory)"
+    # Seed product/inventory qua TARGET (arg2), không dùng hostname K8s — Jenkins/agent ngoài namespace không resolve được product/inventory.
+    P_BASE="http://${TARGET}:$(svc_port product)"
+    I_BASE="http://${TARGET}:$(svc_port inventory)"
     O_BASE="http://${TARGET}:$(svc_port "$SERVICE")"
     PID=$(( $(date +%s) + RANDOM ))
     P_CREATE=$(curl_retry "$P_BASE/products" "POST" "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}")
