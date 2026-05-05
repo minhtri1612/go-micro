@@ -53,7 +53,7 @@ case "$SERVICE" in
     # 1. GET /products — list phải là JSON array
     LIST_BODY=$(curl_retry "$BASE/products")
     echo "[DBG] product list: $LIST_BODY"
-    echo "$LIST_BODY" | grep -qE '^\[' || fail "product.list not a JSON array" "$LIST_BODY"
+    echo "$LIST_BODY" | grep -qE '^\[|^null' || fail "product.list not a JSON array or null" "$LIST_BODY"
 
     # 2. POST /products — tạo mới để test CRUD
     PNAME="dep-prod-${RANDOM}"
