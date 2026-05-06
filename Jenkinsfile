@@ -10,6 +10,11 @@ pipeline {
     disableConcurrentBuilds()
   }
 
+  environment {
+    KUBECONFIG = '/var/jenkins_home/.kube/config'
+    EFFECTIVE_EXECUTION_MODE = 'dev-pod'
+  }
+
   parameters {
     string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
@@ -32,11 +37,8 @@ pipeline {
         sh 'chmod +x tests/*/run.sh'
         sh 'kubectl version --client'
         script {
-          env.EFFECTIVE_EXECUTION_MODE = resolveExecutionMode(params.DEV_KUBE_CONTEXT)
+          validateKubeContext(params.DEV_KUBE_CONTEXT)
           echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
-          if (env.EFFECTIVE_EXECUTION_MODE == 'dev-pod') {
-            validateKubeContext(params.DEV_KUBE_CONTEXT)
-          }
         }
       }
     }
@@ -211,14 +213,6 @@ def validateKubeContext(String kubeContext) {
   )
   if (code != 0) {
     String contexts = sh(script: "kubectl config get-contexts -o name || true", returnStdout: true).trim()
-    error("Không tìm thấy context '${kubeContext}' trong Jenkins. Context hiện có: ${contexts ?: '(none)'}. Chọn EXECUTION_MODE=direct hoặc cung cấp kubeconfig có context dev.")
+    error("Không tìm thấy context '${kubeContext}' trong Jenkins KUBECONFIG=${env.KUBECONFIG}. Context hiện có: ${contexts ?: '(none)'}.")
   }
-}
-
-def resolveExecutionMode(String kubeContext) {
-  String code = sh(
-    script: "kubectl config get-contexts '${kubeContext}' >/dev/null 2>&1",
-    returnStatus: true
-  )
-  return code == 0 ? 'dev-pod' : 'direct'
 }
