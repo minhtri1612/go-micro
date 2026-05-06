@@ -2,7 +2,9 @@
 // Agent cần: curl, sh; stage k6 cần Docker (CLI + quyền chạy docker run) hoặc tự đổi stage sang image có sẵn k6.
 
 pipeline {
-  agent any
+  agent {
+    label 'built-in'
+  }
 
   options {
     disableConcurrentBuilds()
