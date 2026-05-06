@@ -205,7 +205,7 @@ def runWithMode(String mode, String kubeContext, String namespace, String image,
 
 def validateKubeContext(String kubeContext) {
   String code = sh(
-    script: "kubectl config get-contexts -o name | rg '^${kubeContext}\$' > /dev/null",
+    script: "kubectl config get-contexts '${kubeContext}' >/dev/null 2>&1",
     returnStatus: true
   )
   if (code != 0) {
@@ -219,7 +219,7 @@ def resolveExecutionMode(String mode, String kubeContext) {
     return mode
   }
   String code = sh(
-    script: "kubectl config get-contexts -o name | rg '^${kubeContext}\$' > /dev/null",
+    script: "kubectl config get-contexts '${kubeContext}' >/dev/null 2>&1",
     returnStatus: true
   )
   return code == 0 ? 'dev-pod' : 'direct'
