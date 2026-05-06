@@ -9,7 +9,6 @@ pipeline {
   }
 
   parameters {
-    choice(name: 'EXECUTION_MODE', choices: ['auto', 'dev-pod', 'direct'], description: 'auto: tự chọn dev-pod nếu có context dev, ngược lại direct.')
     string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
     string(name: 'TARGET_HOST', defaultValue: 'dev.go-micro.local', description: 'Host trong URL + header Host cho route smoke (Traefik/Ingress :80).')
@@ -31,7 +30,7 @@ pipeline {
         sh 'chmod +x tests/*/run.sh'
         sh 'kubectl version --client'
         script {
-          env.EFFECTIVE_EXECUTION_MODE = resolveExecutionMode(params.EXECUTION_MODE, params.DEV_KUBE_CONTEXT)
+          env.EFFECTIVE_EXECUTION_MODE = resolveExecutionMode(params.DEV_KUBE_CONTEXT)
           echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
           if (env.EFFECTIVE_EXECUTION_MODE == 'dev-pod') {
             validateKubeContext(params.DEV_KUBE_CONTEXT)
@@ -214,10 +213,7 @@ def validateKubeContext(String kubeContext) {
   }
 }
 
-def resolveExecutionMode(String mode, String kubeContext) {
-  if (mode == 'direct' || mode == 'dev-pod') {
-    return mode
-  }
+def resolveExecutionMode(String kubeContext) {
   String code = sh(
     script: "kubectl config get-contexts '${kubeContext}' >/dev/null 2>&1",
     returnStatus: true
