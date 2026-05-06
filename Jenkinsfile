@@ -272,8 +272,16 @@ def runRolloutAction(String kubeContext, String namespace, String service, Strin
   }
   sh """
     set -e
-    kubectl argo rollouts --context ${kubeContext} version >/dev/null
-    kubectl argo rollouts --context ${kubeContext} -n ${namespace} ${action} ${service}
-    kubectl argo rollouts --context ${kubeContext} -n ${namespace} get rollout ${service}
+    if kubectl argo rollouts --context ${kubeContext} version >/dev/null 2>&1; then
+      kubectl argo rollouts --context ${kubeContext} -n ${namespace} ${action} ${service}
+    else
+      echo "kubectl-argo-rollouts not found, fallback to kubectl patch for action=${action}"
+      if [ "${action}" = "promote" ]; then
+        kubectl --context ${kubeContext} -n ${namespace} patch rollout ${service} --type merge -p '{"spec":{"paused":false}}'
+      else
+        kubectl --context ${kubeContext} -n ${namespace} patch rollout ${service} --type merge -p '{"spec":{"paused":true}}'
+      fi
+    fi
+    kubectl --context ${kubeContext} -n ${namespace} get rollout ${service}
   """
 }
