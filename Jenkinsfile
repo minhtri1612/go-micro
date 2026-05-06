@@ -207,12 +207,12 @@ def runWithMode(String mode, String kubeContext, String namespace, String image,
 }
 
 def validateKubeContext(String kubeContext) {
-  String code = sh(
-    script: "kubectl config get-contexts '${kubeContext}' >/dev/null 2>&1",
-    returnStatus: true
-  )
-  if (code != 0) {
-    String contexts = sh(script: "kubectl config get-contexts -o name || true", returnStdout: true).trim()
-    error("Không tìm thấy context '${kubeContext}' trong Jenkins KUBECONFIG=${env.KUBECONFIG}. Context hiện có: ${contexts ?: '(none)'}.")
+  String contextsRaw = sh(
+    script: "kubectl config get-contexts -o name || true",
+    returnStdout: true
+  ).trim()
+  List contexts = contextsRaw ? contextsRaw.split('\n').collect { it.trim() } : []
+  if (!contexts.contains(kubeContext.trim())) {
+    error("Không tìm thấy context '${kubeContext}' trong Jenkins KUBECONFIG=${env.KUBECONFIG}. Context hiện có: ${contextsRaw ?: '(none)'}.")
   }
 }
