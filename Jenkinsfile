@@ -18,6 +18,10 @@ pipeline {
   parameters {
     string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
+    string(name: 'ROLLOUT_NAMESPACE', defaultValue: 'microservices-dev', description: 'Namespace chứa Argo Rollout cần promote/abort.')
+    string(name: 'ROLLOUT_SERVICE', defaultValue: 'auto', description: '`auto` = tự suy ra từ DEPENDENCY_SERVICES/BUSINESS_SERVICES (chỉ khi 1 service); hoặc ghi rõ service, ví dụ: inventory.')
+    booleanParam(name: 'AUTO_PROMOTE', defaultValue: true, description: 'Tự promote rollout khi toàn bộ quality gate pass.')
+    booleanParam(name: 'AUTO_ABORT', defaultValue: true, description: 'Tự abort rollout khi pipeline fail.')
     string(name: 'TARGET_HOST', defaultValue: 'dev.go-micro.local', description: 'Host trong URL + header Host cho route smoke (Traefik/Ingress :80).')
     string(name: 'BACKEND_IP', defaultValue: '172.18.255.10', description: 'IP gateway/Ingress: dependency & business (http://IP:port), route smoke (--resolve), k6 TARGET_URL.')
     string(name: 'DEPENDENCY_SERVICES', defaultValue: 'all', description: '`all` = chạy hết service có trong tests/dependency-check/run.sh; hoặc CSV: product,inventory,order,noti,payment')
@@ -38,7 +42,9 @@ pipeline {
         sh 'kubectl version --client'
         script {
           validateKubeContext(params.DEV_KUBE_CONTEXT)
+          env.RESOLVED_ROLLOUT_SERVICE = resolveRolloutService(params.ROLLOUT_SERVICE, params.DEPENDENCY_SERVICES, params.BUSINESS_SERVICES)
           echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
+          echo "Rollout target: ${params.ROLLOUT_NAMESPACE}/${env.RESOLVED_ROLLOUT_SERVICE ?: '(none)'}"
         }
       }
     }
@@ -157,9 +163,29 @@ pipeline {
         )
       }
     }
+
+    stage('Promote Rollout') {
+      when {
+        expression { params.AUTO_PROMOTE && env.RESOLVED_ROLLOUT_SERVICE?.trim() }
+      }
+      steps {
+        script {
+          runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
+        }
+      }
+    }
   }
 
   post {
+    failure {
+      script {
+        if (params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
+          runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+        } else {
+          echo "Skip abort rollout: AUTO_ABORT=${params.AUTO_ABORT}, service='${env.RESOLVED_ROLLOUT_SERVICE ?: ''}'"
+        }
+      }
+    }
     always {
       deleteDir()
     }
@@ -215,4 +241,39 @@ def validateKubeContext(String kubeContext) {
   if (!contexts.contains(kubeContext.trim())) {
     error("Không tìm thấy context '${kubeContext}' trong Jenkins KUBECONFIG=${env.KUBECONFIG}. Context hiện có: ${contextsRaw ?: '(none)'}.")
   }
+}
+
+def resolveRolloutService(String rolloutService, String depServices, String bizServices) {
+  if (rolloutService != null && rolloutService.trim() && !rolloutService.trim().equalsIgnoreCase('auto')) {
+    return rolloutService.trim().toLowerCase()
+  }
+  def candidates = [] as Set
+  [depServices, bizServices].each { raw ->
+    if (!raw) {
+      return
+    }
+    def t = raw.trim().toLowerCase()
+    if (t == 'all') {
+      return
+    }
+    t.split(',').collect { it.trim() }.findAll { it }.each { candidates << it }
+  }
+  if (candidates.size() == 1) {
+    return candidates.first()
+  }
+  echo "Không thể auto-resolve rollout service (DEP='${depServices}', BIZ='${bizServices}')."
+  echo "Đặt ROLLOUT_SERVICE=<service> để bật promote/abort tự động."
+  return ''
+}
+
+def runRolloutAction(String kubeContext, String namespace, String service, String action) {
+  if (!(action in ['promote', 'abort'])) {
+    error("Unsupported rollout action: ${action}")
+  }
+  sh """
+    set -e
+    kubectl --context ${kubeContext} argo rollouts version >/dev/null
+    kubectl --context ${kubeContext} -n ${namespace} argo rollouts ${action} ${service}
+    kubectl --context ${kubeContext} -n ${namespace} argo rollouts get rollout ${service}
+  """
 }
