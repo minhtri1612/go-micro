@@ -9,6 +9,8 @@ pipeline {
   }
 
   parameters {
+    string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
+    string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
     string(name: 'TARGET_HOST', defaultValue: 'dev.go-micro.local', description: 'Host trong URL + header Host cho route smoke (Traefik/Ingress :80).')
     string(name: 'BACKEND_IP', defaultValue: '172.18.255.10', description: 'IP gateway/Ingress: dependency & business (http://IP:port), route smoke (--resolve), k6 TARGET_URL.')
     string(name: 'DEPENDENCY_SERVICES', defaultValue: 'all', description: '`all` = chạy hết service có trong tests/dependency-check/run.sh; hoặc CSV: product,inventory,order,noti,payment')
@@ -26,6 +28,7 @@ pipeline {
     stage('Prepare') {
       steps {
         sh 'chmod +x tests/*/run.sh'
+        sh 'kubectl version --client'
       }
     }
 
@@ -37,7 +40,18 @@ pipeline {
           def branches = [:]
           svcs.each { svc ->
             branches["dependency-${svc}"] = {
-              sh "./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}"
+              runInDevPod(
+                params.DEV_KUBE_CONTEXT,
+                params.DEV_TEST_NAMESPACE,
+                'alpine:3.20',
+                """
+                  apk add --no-cache curl git >/dev/null
+                  git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
+                  cd /tmp/go-micro
+                  chmod +x tests/*/run.sh
+                  ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}
+                """
+              )
             }
           }
           parallel branches
@@ -53,7 +67,18 @@ pipeline {
           def branches = [:]
           svcs.each { svc ->
             branches["business-${svc}"] = {
-              sh "./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}"
+              runInDevPod(
+                params.DEV_KUBE_CONTEXT,
+                params.DEV_TEST_NAMESPACE,
+                'alpine:3.20',
+                """
+                  apk add --no-cache curl git >/dev/null
+                  git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
+                  cd /tmp/go-micro
+                  chmod +x tests/*/run.sh
+                  ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}
+                """
+              )
             }
           }
           parallel branches
@@ -66,30 +91,44 @@ pipeline {
         expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
       }
       steps {
-        sh "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
+        runInDevPod(
+          params.DEV_KUBE_CONTEXT,
+          params.DEV_TEST_NAMESPACE,
+          'alpine:3.20',
+          """
+            apk add --no-cache curl git >/dev/null
+            git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
+            cd /tmp/go-micro
+            chmod +x tests/*/run.sh
+            ./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
+          """
+        )
       }
     }
 
     stage('Load Test (k6)') {
       steps {
-        sh """
-          # Tải k6 binary trực tiếp thay vì dùng docker (vì Jenkins pod không có docker)
-          if [ ! -f ./k6 ]; then
-            curl -sS -L "https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz" -o k6.tar.gz
-            tar -xzf k6.tar.gz
-            mv k6-v0.49.0-linux-amd64/k6 ./k6
-          fi
-          
-          # Cấp quyền thực thi và chạy k6
-          chmod +x ./k6
-          export TARGET_URL=${params.BACKEND_IP}
-          export SERVICE_NAME=${params.K6_SERVICE_NAME}
-          export VUS=${params.K6_VUS}
-          export DURATION=${params.K6_DURATION}
-          export ERROR_RATE=${params.K6_ERROR_RATE}
-          
-          ./k6 run tests/load-test/k6-script.js
-        """
+        runInDevPod(
+          params.DEV_KUBE_CONTEXT,
+          params.DEV_TEST_NAMESPACE,
+          'grafana/k6:0.49.0',
+          """
+            cat >/tmp/k6-script.js <<'EOF'
+            import http from 'k6/http';
+            import { check, sleep } from 'k6';
+            const vus = __ENV.VUS || 10;
+            const duration = __ENV.DURATION || '30s';
+            const errorRate = __ENV.ERROR_RATE || '0.1';
+            const service = __ENV.SERVICE_NAME || 'product';
+            const target = __ENV.TARGET_URL || 'localhost';
+            export const options = { vus: vus, duration: duration, thresholds: { http_req_failed: [\`rate<\${errorRate}\`], http_req_duration: ['p(95)<2000'] } };
+            function getPrefix(s) { return ({ product:'/api/v1/products', order:'/api/v1/orders', inventory:'/api/v1/inventory', noti:'/api/v1/notifications', payment:'/api/v1/payments', client:'/' }[s] || '/api/v1/products'); }
+            function probePath(s) { if (s === 'client') return '/'; if (s === 'order') return '/orders'; return '/health'; }
+            export default function () { const prefix = getPrefix(service); const path = probePath(service); const params = { headers: { Host: 'dev.go-micro.local' } }; const res = http.get(\`http://\${target}\${prefix}\${path}\`, params); check(res, { 'status is 200': (r) => r.status === 200 }); sleep(0.3); }
+            EOF
+            TARGET_URL=${params.BACKEND_IP} SERVICE_NAME=${params.K6_SERVICE_NAME} VUS=${params.K6_VUS} DURATION=${params.K6_DURATION} ERROR_RATE=${params.K6_ERROR_RATE} k6 run /tmp/k6-script.js
+          """
+        )
       }
     }
   }
@@ -114,4 +153,18 @@ def expandServicesCsv(String raw, List allList) {
     error('Danh sách service sau khi parse rỗng.')
   }
   return out
+}
+
+def runInDevPod(String kubeContext, String namespace, String image, String scriptBody) {
+  String podName = "ci-${env.BUILD_NUMBER}-${java.util.UUID.randomUUID().toString().take(8)}".toLowerCase()
+  String escaped = scriptBody.stripIndent().trim().replace("'", "'\"'\"'")
+  sh """
+    set -e
+    kubectl --context ${kubeContext} -n ${namespace} run ${podName} --image=${image} --restart=Never --command -- sh -lc '${escaped}'
+    kubectl --context ${kubeContext} -n ${namespace} wait --for=jsonpath='{.status.phase}'=Succeeded pod/${podName} --timeout=1200s || true
+    kubectl --context ${kubeContext} -n ${namespace} logs ${podName}
+    PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}')
+    kubectl --context ${kubeContext} -n ${namespace} delete pod/${podName} --ignore-not-found=true >/dev/null
+    [ "\$PHASE" = "Succeeded" ] || (echo "Pod ${podName} failed with phase \$PHASE" && exit 1)
+  """
 }
