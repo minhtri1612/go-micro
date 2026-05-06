@@ -65,6 +65,13 @@ helm upgrade --install argocd argo/argo-cd -n argocd \
   --wait --timeout 10m
 kubectl -n argocd wait --for=condition=Ready pods --all --timeout=300s
 
+# Tang timeout de tranh repo-server timeout khi render chart lon (vd kube-prometheus-stack)
+kubectl --context kind-management -n argocd patch configmap argocd-cmd-params-cm --type merge -p '{"data":{"controller.repo.server.timeout.seconds":"180"}}'
+kubectl --context kind-management -n argocd rollout restart deploy/argocd-repo-server
+kubectl --context kind-management -n argocd rollout restart statefulset/argocd-application-controller
+kubectl --context kind-management -n argocd rollout status deploy/argocd-repo-server --timeout=180s
+kubectl --context kind-management -n argocd rollout status statefulset/argocd-application-controller --timeout=180s
+
 kubectl -n argocd port-forward svc/argocd-server 8080:443
 ```
 

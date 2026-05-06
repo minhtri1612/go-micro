@@ -10,8 +10,12 @@ controller:
     username: "admin"
     password: "admin"
 
-  # Plugin đã bake trong image — init không tải từ Update Center (tránh chờ dài).
+  # Plugin bắt buộc cho JCasC + Job DSL pipeline seed.
+  # Nếu thiếu `configuration-as-code`/`job-dsl` thì file configScripts không tạo được job.
   installPlugins:
+    - configuration-as-code
+    - job-dsl
+    - git
     - pipeline-stage-view
 
   installLatestPlugins: false
