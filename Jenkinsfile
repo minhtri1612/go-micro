@@ -272,8 +272,8 @@ def runRolloutAction(String kubeContext, String namespace, String service, Strin
   }
   sh """
     set -e
-    kubectl --context ${kubeContext} argo rollouts version >/dev/null
-    kubectl --context ${kubeContext} -n ${namespace} argo rollouts ${action} ${service}
-    kubectl --context ${kubeContext} -n ${namespace} argo rollouts get rollout ${service}
+    kubectl argo rollouts --context ${kubeContext} version >/dev/null
+    kubectl argo rollouts --context ${kubeContext} -n ${namespace} ${action} ${service}
+    kubectl argo rollouts --context ${kubeContext} -n ${namespace} get rollout ${service}
   """
 }
