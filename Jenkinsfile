@@ -1,4 +1,4 @@
-// Thay cho GitHub Actions external-smoke-tests: curl smoke + k6 (tests/).
+// External quality gate pipeline: dependency/business/route smoke + k6.
 // Agent cần: curl, sh; stage k6 cần Docker (CLI + quyền chạy docker run) hoặc tự đổi stage sang image có sẵn k6.
 
 pipeline {
@@ -13,8 +13,9 @@ pipeline {
     string(name: 'BACKEND_IP', defaultValue: '172.18.255.10', description: 'IP gateway/Ingress: dependency & business (http://IP:port), route smoke (--resolve), k6 TARGET_URL.')
     string(name: 'DEPENDENCY_SERVICES', defaultValue: 'all', description: '`all` = chạy hết service có trong tests/dependency-check/run.sh; hoặc CSV: product,inventory,order,noti,payment')
     string(name: 'BUSINESS_SERVICES', defaultValue: 'all', description: '`all` = chạy hết service có trong tests/business-smoke/run.sh; hoặc CSV tùy chọn.')
-    string(name: 'ROUTE_PREFIX', defaultValue: '/api/v1/products', description: 'Path prefix cho route smoke (khớp Rollout/ingress).')
+    string(name: 'ROUTE_PREFIX', defaultValue: '/api/v1/products', description: 'Path prefix cho route smoke qua ingress/gateway.')
     booleanParam(name: 'ROUTE_SMOKE', defaultValue: true, description: 'Chạy route smoke canary/preview (curl qua --resolve, không cần ghi /etc/hosts).')
+    choice(name: 'ROUTE_MODE', choices: ['canary', 'preview', 'standard'], description: 'Mode route smoke để test traffic split trước promote.')
     string(name: 'K6_SERVICE_NAME', defaultValue: 'product', description: 'Service k6 load-test (map port trong tests/load-test/k6-script.js).')
     string(name: 'K6_VUS', defaultValue: '5', description: 'k6 virtual users')
     string(name: 'K6_DURATION', defaultValue: '15s', description: 'k6 duration')
@@ -65,26 +66,7 @@ pipeline {
         expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
       }
       steps {
-        script {
-          // Lấy strategy từ config/env/dev.yaml, mặc định là canary nếu không tìm thấy
-          def strategy = sh(
-            script: '''grep -A 2 '^rollout:' config/env/dev.yaml | grep 'strategy:' | awk '{print $2}' || echo 'canary' ''',
-            returnStdout: true
-          ).trim().toLowerCase()
-          
-          echo "Detected Rollout Strategy from dev.yaml: ${strategy}"
-          
-          if (strategy == 'canary') {
-            echo "Running Route Smoke Test for Canary (X-Canary: true)"
-            sh "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} canary ${params.BACKEND_IP}"
-          } else if (strategy == 'bluegreen') {
-            echo "Running Route Smoke Test for Preview (X-Preview: true)"
-            sh "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} preview ${params.BACKEND_IP}"
-          } else {
-            echo "Unknown strategy: ${strategy}. Defaulting to canary."
-            sh "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} canary ${params.BACKEND_IP}"
-          }
-        }
+        sh "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
       }
     }
 

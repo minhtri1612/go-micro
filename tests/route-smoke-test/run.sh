@@ -1,16 +1,19 @@
 #!/bin/sh
 set -e
 
-# Usage: ./run.sh <hostname> <path-prefix> <mode: canary|preview> [resolve-ip]
+# Usage: ./run.sh <hostname> <path-prefix> <mode: standard|canary|preview> [resolve-ip]
 # Nếu có resolve-ip: curl dùng --resolve HOST:80:IP (không cần sửa /etc/hosts trên agent).
 HOST="${1:-dev.go-micro.local}"
 PREFIX="${2:-/api/v1/products}"
-MODE="${3:-canary}"
+MODE="${3:-standard}"
 RESOLVE_IP="${4:-}"
 
 echo "Running Route Smoke Test for Mode: $MODE, Host: $HOST, Prefix: $PREFIX Resolve: ${RESOLVE_IP:-DNS}"
 
-if [ "$MODE" = "canary" ]; then
+if [ "$MODE" = "standard" ]; then
+  HEADER=""
+  EXPECTED_SERVED_BY=""
+elif [ "$MODE" = "canary" ]; then
   HEADER="X-Canary: true"
   EXPECTED_SERVED_BY="canary"
 elif [ "$MODE" = "preview" ]; then
@@ -24,11 +27,19 @@ fi
 # In a real CI environment, GATEWAY would point to the LoadBalancer IP or actual Traefik entrypoint.
 URL="http://$HOST$PREFIX/health"
 
-echo "Requesting: $URL with Header: $HEADER"
+echo "Requesting: $URL mode=$MODE"
 if [ -n "$RESOLVE_IP" ]; then
-  RESPONSE=$(curl -i -s --resolve "${HOST}:80:${RESOLVE_IP}" -X GET -H "Host: $HOST" -H "$HEADER" "$URL" || echo "CURL_FAILED")
+  if [ -n "$HEADER" ]; then
+    RESPONSE=$(curl -i -s --resolve "${HOST}:80:${RESOLVE_IP}" -X GET -H "Host: $HOST" -H "$HEADER" "$URL" || echo "CURL_FAILED")
+  else
+    RESPONSE=$(curl -i -s --resolve "${HOST}:80:${RESOLVE_IP}" -X GET -H "Host: $HOST" "$URL" || echo "CURL_FAILED")
+  fi
 else
-  RESPONSE=$(curl -i -s -X GET -H "Host: $HOST" -H "$HEADER" "$URL" || echo "CURL_FAILED")
+  if [ -n "$HEADER" ]; then
+    RESPONSE=$(curl -i -s -X GET -H "Host: $HOST" -H "$HEADER" "$URL" || echo "CURL_FAILED")
+  else
+    RESPONSE=$(curl -i -s -X GET -H "Host: $HOST" "$URL" || echo "CURL_FAILED")
+  fi
 fi
 
 if [ "$RESPONSE" = "CURL_FAILED" ]; then
@@ -43,10 +54,12 @@ if [ "$HTTP_CODE" != "200" ]; then
   exit 1
 fi
 
-SERVED_BY=$(echo "$RESPONSE" | grep -i "X-Served-By" | awk '{print $2}' | tr -d '\r')
-if [ "$SERVED_BY" != "$EXPECTED_SERVED_BY" ]; then
-  echo "FAILED: request was not served by $EXPECTED_SERVED_BY (Got: '$SERVED_BY')"
-  exit 1
+if [ -n "$EXPECTED_SERVED_BY" ]; then
+  SERVED_BY=$(echo "$RESPONSE" | grep -i "X-Served-By" | awk '{print $2}' | tr -d '\r')
+  if [ "$SERVED_BY" != "$EXPECTED_SERVED_BY" ]; then
+    echo "FAILED: request was not served by $EXPECTED_SERVED_BY (Got: '$SERVED_BY')"
+    exit 1
+  fi
 fi
 
 echo "PASSED: Route Gate ($MODE)"
