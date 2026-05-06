@@ -12,7 +12,7 @@ product:
 
 inventory:
   image:
-    tag: "inventory-service-v1.0.2"
+    tag: "inventory-service-v1.0.5"
   replicaCount: 5
   rollout:
     enabled: true
