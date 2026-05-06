@@ -7,6 +7,14 @@ cluster:
   id: 1
 
 kubeProxyReplacement: true
+devices: "eth0"
+
+ipam:
+  mode: cluster-pool
+  operator:
+    clusterPoolIPv4PodCIDRList:
+      - "10.200.0.0/16"
+    clusterPoolIPv4MaskSize: 24
 
 l7Proxy: false
 
@@ -52,6 +60,7 @@ clustermesh:
         port: 2379
 
 bpf:
+  lbExternalClusterIP: true
   events:
     drop:
       enabled: true

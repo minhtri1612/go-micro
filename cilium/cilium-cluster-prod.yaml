@@ -3,6 +3,13 @@ cluster:
   name: prod
   id: 4
 
+ipam:
+  mode: cluster-pool
+  operator:
+    clusterPoolIPv4PodCIDRList:
+      - "10.203.0.0/16"
+    clusterPoolIPv4MaskSize: 24
+
 # Hubble UI: http://<IP prod-control-plane>:31203
 hubble:
   ui:
