@@ -1,21 +1,6 @@
 // Thay cho GitHub Actions external-smoke-tests: curl smoke + k6 (tests/).
 // Agent cần: curl, sh; stage k6 cần Docker (CLI + quyền chạy docker run) hoặc tự đổi stage sang image có sẵn k6.
 
-def expandServicesCsv(String raw, List allList) {
-  if (raw == null || !raw.trim()) {
-    error('Thiếu DEPENDENCY_SERVICES / BUSINESS_SERVICES (dùng `all` hoặc CSV).')
-  }
-  def t = raw.trim()
-  if (t.equalsIgnoreCase('all')) {
-    return allList
-  }
-  def out = t.split(',').collect { it.trim().toLowerCase() }.findAll { it.length() > 0 }.unique()
-  if (out.isEmpty()) {
-    error('Danh sách service sau khi parse rỗng.')
-  }
-  return out
-}
-
 pipeline {
   agent any
 
@@ -132,4 +117,19 @@ pipeline {
       deleteDir()
     }
   }
+}
+
+def expandServicesCsv(String raw, List allList) {
+  if (raw == null || !raw.trim()) {
+    error('Thiếu DEPENDENCY_SERVICES / BUSINESS_SERVICES (dùng `all` hoặc CSV).')
+  }
+  def t = raw.trim()
+  if (t.equalsIgnoreCase('all')) {
+    return allList
+  }
+  def out = t.split(',').collect { it.trim().toLowerCase() }.findAll { it.length() > 0 }.unique()
+  if (out.isEmpty()) {
+    error('Danh sách service sau khi parse rỗng.')
+  }
+  return out
 }
