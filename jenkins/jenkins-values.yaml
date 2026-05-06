@@ -3,7 +3,7 @@
 controller:
   image:
     repository: minhtri1612/jenkins-custom
-    tag: "2.492.3-lts-jdk17-pkg3"
+    tag: "2.492.3-lts-jdk17-pkg4"
     pullPolicy: IfNotPresent
 
   admin:

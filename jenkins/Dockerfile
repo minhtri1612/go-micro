@@ -1,12 +1,22 @@
 # Jenkins controller có plugin đóng gói sẵn — cluster không cần init tải plugin mỗi lần pod lên.
 # Build & push Hub (chạy từ ROOT repo go-micro):
-#   docker build -t minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg3 -f jenkins/Dockerfile jenkins
+#   docker build -t minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg4 -f jenkins/Dockerfile jenkins
 # Hoặc đã cd vào thư mục jenkins/:
-#   docker build -t minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg3 -f Dockerfile .
-#   docker push minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg3
-# Kind (không qua Hub): kind load docker-image minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg3 --name <cluster>
+#   docker build -t minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg4 -f Dockerfile .
+#   docker push minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg4
+# Kind (không qua Hub): kind load docker-image minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg4 --name <cluster>
 # Core LTS đủ cho transitive plugins hiện tại (json-api/gson-api… đòi Jenkins ≥ ~2.492).
 FROM jenkins/jenkins:2.492.3-lts-jdk17
+
+USER root
+
+# Provide kubectl in controller for pipelines that spawn test pods in kind-dev.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl ca-certificates \
+  && curl -fsSL "https://dl.k8s.io/release/v1.28.15/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
+  && chmod +x /usr/local/bin/kubectl \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
 
 USER jenkins
 
