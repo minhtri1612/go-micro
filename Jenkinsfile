@@ -9,6 +9,7 @@ pipeline {
   }
 
   parameters {
+    choice(name: 'EXECUTION_MODE', choices: ['auto', 'dev-pod', 'direct'], description: 'auto: tự chọn dev-pod nếu có context dev, ngược lại direct.')
     string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
     string(name: 'TARGET_HOST', defaultValue: 'dev.go-micro.local', description: 'Host trong URL + header Host cho route smoke (Traefik/Ingress :80).')
@@ -29,6 +30,13 @@ pipeline {
       steps {
         sh 'chmod +x tests/*/run.sh'
         sh 'kubectl version --client'
+        script {
+          env.EFFECTIVE_EXECUTION_MODE = resolveExecutionMode(params.EXECUTION_MODE, params.DEV_KUBE_CONTEXT)
+          echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
+          if (env.EFFECTIVE_EXECUTION_MODE == 'dev-pod') {
+            validateKubeContext(params.DEV_KUBE_CONTEXT)
+          }
+        }
       }
     }
 
@@ -40,7 +48,8 @@ pipeline {
           def branches = [:]
           svcs.each { svc ->
             branches["dependency-${svc}"] = {
-              runInDevPod(
+              runWithMode(
+                env.EFFECTIVE_EXECUTION_MODE,
                 params.DEV_KUBE_CONTEXT,
                 params.DEV_TEST_NAMESPACE,
                 'alpine:3.20',
@@ -50,7 +59,8 @@ pipeline {
                   cd /tmp/go-micro
                   chmod +x tests/*/run.sh
                   ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}
-                """
+                """,
+                "./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}"
               )
             }
           }
@@ -67,7 +77,8 @@ pipeline {
           def branches = [:]
           svcs.each { svc ->
             branches["business-${svc}"] = {
-              runInDevPod(
+              runWithMode(
+                env.EFFECTIVE_EXECUTION_MODE,
                 params.DEV_KUBE_CONTEXT,
                 params.DEV_TEST_NAMESPACE,
                 'alpine:3.20',
@@ -77,7 +88,8 @@ pipeline {
                   cd /tmp/go-micro
                   chmod +x tests/*/run.sh
                   ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}
-                """
+                """,
+                "./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}"
               )
             }
           }
@@ -91,7 +103,8 @@ pipeline {
         expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
       }
       steps {
-        runInDevPod(
+        runWithMode(
+          env.EFFECTIVE_EXECUTION_MODE,
           params.DEV_KUBE_CONTEXT,
           params.DEV_TEST_NAMESPACE,
           'alpine:3.20',
@@ -101,14 +114,16 @@ pipeline {
             cd /tmp/go-micro
             chmod +x tests/*/run.sh
             ./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
-          """
+          """,
+          "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
         )
       }
     }
 
     stage('Load Test (k6)') {
       steps {
-        runInDevPod(
+        runWithMode(
+          env.EFFECTIVE_EXECUTION_MODE,
           params.DEV_KUBE_CONTEXT,
           params.DEV_TEST_NAMESPACE,
           'grafana/k6:0.49.0',
@@ -127,7 +142,15 @@ pipeline {
             export default function () { const prefix = getPrefix(service); const path = probePath(service); const params = { headers: { Host: 'dev.go-micro.local' } }; const res = http.get('http://' + target + prefix + path, params); check(res, { 'status is 200': (r) => r.status === 200 }); sleep(0.3); }
             EOF
             TARGET_URL=${params.BACKEND_IP} SERVICE_NAME=${params.K6_SERVICE_NAME} VUS=${params.K6_VUS} DURATION=${params.K6_DURATION} ERROR_RATE=${params.K6_ERROR_RATE} k6 run /tmp/k6-script.js
-          """
+          """,
+          """docker run --rm \
+            -e TARGET_URL=${params.BACKEND_IP} \
+            -e SERVICE_NAME=${params.K6_SERVICE_NAME} \
+            -e VUS=${params.K6_VUS} \
+            -e DURATION=${params.K6_DURATION} \
+            -e ERROR_RATE=${params.K6_ERROR_RATE} \
+            -v "\$(pwd)/tests/load-test/k6-script.js:/scripts/k6-script.js:ro" \
+            grafana/k6:0.49.0 run /scripts/k6-script.js"""
         )
       }
     }
@@ -167,4 +190,37 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
     kubectl --context ${kubeContext} -n ${namespace} delete pod/${podName} --ignore-not-found=true >/dev/null
     [ "\$PHASE" = "Succeeded" ] || (echo "Pod ${podName} failed with phase \$PHASE" && exit 1)
   """
+}
+
+def runWithMode(String mode, String kubeContext, String namespace, String image, String podScriptBody, String directScriptBody) {
+  if (mode == 'dev-pod') {
+    runInDevPod(kubeContext, namespace, image, podScriptBody)
+    return
+  }
+  sh """
+    set -e
+    ${directScriptBody}
+  """
+}
+
+def validateKubeContext(String kubeContext) {
+  String code = sh(
+    script: "kubectl config get-contexts -o name | rg '^${kubeContext}\$' > /dev/null",
+    returnStatus: true
+  )
+  if (code != 0) {
+    String contexts = sh(script: "kubectl config get-contexts -o name || true", returnStdout: true).trim()
+    error("Không tìm thấy context '${kubeContext}' trong Jenkins. Context hiện có: ${contexts ?: '(none)'}. Chọn EXECUTION_MODE=direct hoặc cung cấp kubeconfig có context dev.")
+  }
+}
+
+def resolveExecutionMode(String mode, String kubeContext) {
+  if (mode == 'direct' || mode == 'dev-pod') {
+    return mode
+  }
+  String code = sh(
+    script: "kubectl config get-contexts -o name | rg '^${kubeContext}\$' > /dev/null",
+    returnStatus: true
+  )
+  return code == 0 ? 'dev-pod' : 'direct'
 }
