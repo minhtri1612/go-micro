@@ -124,6 +124,7 @@ pipeline {
           def decision = 'Promote to stable'
           timeout(time: 30, unit: 'MINUTES') {
             decision = input(
+              id: "rollout-decision-${env.BUILD_NUMBER}",
               message: "Quality gate PASS cho [${env.RESOLVED_ROLLOUT_SERVICE}]. Chọn Promote hoặc Rollback.",
               ok: 'Xác nhận',
               parameters: [
@@ -211,6 +212,7 @@ pipeline {
           def failDecision = params.ON_FAILURE_MANUAL_ACTION ?: 'Rollback now'
           timeout(time: 20, unit: 'MINUTES') {
             failDecision = input(
+              id: "failure-action-${env.BUILD_NUMBER}",
               message: "Pipeline FAILED cho [${env.RESOLVED_ROLLOUT_SERVICE}]. Chọn rollback hay giữ nguyên trạng thái rollout.",
               ok: 'Xác nhận',
               parameters: [
