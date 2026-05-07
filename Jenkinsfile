@@ -43,6 +43,7 @@ pipeline {
     string(name: 'ROUTE_PREFIX', defaultValue: 'auto', description: '`auto` = suy từ BUSINESS_SERVICES (ưu tiên) hoặc DEPENDENCY_SERVICES khi chọn 1 service; cả hai `all` → `/api/v1/products`. Ghi path tường minh để override.')
     booleanParam(name: 'ROUTE_SMOKE', defaultValue: true, description: 'Chạy route smoke canary/preview (curl qua --resolve, không cần ghi /etc/hosts).')
     choice(name: 'ROUTE_MODE', choices: ['canary', 'preview', 'standard'], description: 'Mode route smoke để test traffic split trước promote.')
+    booleanParam(name: 'CANARY_HEADER_API_TESTS', defaultValue: false, description: 'Bật để ép dependency/business gửi X-Canary:true. Mặc định tắt vì một số endpoint POST có thể trả 405 qua canary route.')
     string(name: 'K6_SERVICE_NAME', defaultValue: 'product', description: 'Service k6 load-test (map port trong tests/load-test/k6-script.js).')
     string(name: 'K6_VUS', defaultValue: '5', description: 'k6 virtual users')
     string(name: 'K6_DURATION', defaultValue: '15s', description: 'k6 duration')
@@ -267,7 +268,7 @@ def parseTimeoutSeconds(String raw) {
 def runDependencyCheckSteps() {
   def allDep = ['product', 'inventory', 'order', 'payment', 'noti']
   def svcs = expandServicesCsv(params.DEPENDENCY_SERVICES, allDep)
-  def canaryHeader = shouldEnableCanaryHeader() ? 'true' : 'false'
+  def canaryHeader = shouldEnableCanaryHeaderForApiTests() ? 'true' : 'false'
   svcs.each { svc ->
     runWithMode(
       env.EFFECTIVE_EXECUTION_MODE,
@@ -289,7 +290,7 @@ def runDependencyCheckSteps() {
 def runBusinessSmokeSteps() {
   def allBiz = ['product', 'inventory', 'order', 'payment', 'noti']
   def svcs = expandServicesCsv(params.BUSINESS_SERVICES, allBiz)
-  def canaryHeader = shouldEnableCanaryHeader() ? 'true' : 'false'
+  def canaryHeader = shouldEnableCanaryHeaderForApiTests() ? 'true' : 'false'
   svcs.each { svc ->
     runWithMode(
       env.EFFECTIVE_EXECUTION_MODE,
@@ -358,8 +359,8 @@ def runK6LoadSteps() {
   )
 }
 
-def shouldEnableCanaryHeader() {
-  return params.ROUTE_MODE?.toString()?.trim()?.equalsIgnoreCase('canary')
+def shouldEnableCanaryHeaderForApiTests() {
+  return params.CANARY_HEADER_API_TESTS == true
 }
 
 def validateKubeContext(String kubeContext) {
