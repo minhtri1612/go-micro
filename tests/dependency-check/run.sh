@@ -46,6 +46,23 @@ assert_contains() {
   echo "$body" | grep -qF "$pattern" || fail "$label not found (expected '$pattern')" "$body"
 }
 
+wait_inventory_available() {
+  local base="$1" pid="$2" qty="$3"
+  local tries=0
+  while [ $tries -lt 12 ]; do
+    CHECK=$(curl -sS -H "Host: dev.go-micro.local" -X POST "$base/inventory/check" \
+      -H "Content-Type: application/json" \
+      -d "{\"product_id\":$pid,\"quantity\":$qty}" || true)
+    if echo "$CHECK" | grep -qF '"is_available":true'; then
+      echo "[DBG] inventory ready for order: $CHECK"
+      return 0
+    fi
+    tries=$((tries+1))
+    sleep 2
+  done
+  fail "order.dep.seed.inventory_not_available_after_retries" "$CHECK"
+}
+
 case "$SERVICE" in
   product)
     BASE="http://${TARGET}$(svc_prefix "$SERVICE")"
@@ -131,6 +148,8 @@ case "$SERVICE" in
     REAL_PID=$(echo "$P_CREATE" | sed -n 's/.*\"id\":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
     assert_field "order.dep.seed_product_id" "$REAL_PID" "$P_CREATE"
     curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$REAL_PID,\"quantity\":25,\"sku\":\"ODSKU-$PID\",\"location\":\"D4\"}" >/dev/null
+    # Đợi inventory/check phản ánh bản ghi seed trước khi đi vào luồng tạo order.
+    wait_inventory_available "$I_BASE" "$REAL_PID" 1
 
     # 2. Test: inventory check FAIL (quantity=99999 > 25 available)
     INV_FAIL_STATUS=$(curl -sS -H "Host: dev.go-micro.local" -o /dev/null -w "%{http_code}" -X POST "$O_BASE/orders" \
