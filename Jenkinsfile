@@ -30,8 +30,16 @@ pipeline {
     booleanParam(name: 'AUTO_ABORT', defaultValue: true, description: 'Tự abort rollout khi pipeline fail.')
     string(name: 'TARGET_HOST', defaultValue: 'dev.go-micro.local', description: 'Host trong URL + header Host cho route smoke (Traefik/Ingress :80).')
     string(name: 'BACKEND_IP', defaultValue: '172.18.255.10', description: 'IP gateway/Ingress: dependency & business (http://IP:port), route smoke (--resolve), k6 TARGET_URL.')
-    string(name: 'DEPENDENCY_SERVICES', defaultValue: 'all', description: '`all` = chạy hết service có trong tests/dependency-check/run.sh; hoặc CSV: product,inventory,order,noti,payment')
-    string(name: 'BUSINESS_SERVICES', defaultValue: 'all', description: '`all` = chạy hết service có trong tests/business-smoke/run.sh; hoặc CSV tùy chọn.')
+    choice(
+      name: 'DEPENDENCY_SERVICES',
+      choices: ['all', 'product', 'inventory', 'order', 'payment', 'noti'],
+      description: 'Dependency check: chọn `all` hoặc đúng một service (dropdown, không cần gõ CSV).'
+    )
+    choice(
+      name: 'BUSINESS_SERVICES',
+      choices: ['all', 'product', 'inventory', 'order', 'payment', 'noti'],
+      description: 'Business smoke: chọn `all` hoặc đúng một service (dropdown, không cần gõ CSV).'
+    )
     string(name: 'ROUTE_PREFIX', defaultValue: '/api/v1/products', description: 'Path prefix cho route smoke qua ingress/gateway.')
     booleanParam(name: 'ROUTE_SMOKE', defaultValue: true, description: 'Chạy route smoke canary/preview (curl qua --resolve, không cần ghi /etc/hosts).')
     choice(name: 'ROUTE_MODE', choices: ['canary', 'preview', 'standard'], description: 'Mode route smoke để test traffic split trước promote.')
