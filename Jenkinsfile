@@ -16,6 +16,11 @@ pipeline {
   }
 
   parameters {
+    choice(
+      name: 'PIPELINE_SCOPE',
+      choices: ['full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'],
+      description: '`full` = Prepare + mọi stage + Promote (nếu bật). `*-only` = chỉ Prepare + đúng một nhóm test; bỏ qua Promote (không đụng rollout).'
+    )
     string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
     string(name: 'ROLLOUT_NAMESPACE', defaultValue: 'microservices-dev', description: 'Namespace chứa Argo Rollout cần promote/abort.')
@@ -49,124 +54,156 @@ pipeline {
       }
     }
 
-    stage('Dependency Check') {
-      steps {
-        script {
-          def allDep = ['product', 'inventory', 'order', 'payment', 'noti']
-          def svcs = expandServicesCsv(params.DEPENDENCY_SERVICES, allDep)
-          def branches = [:]
-          svcs.each { svc ->
-            branches["dependency-${svc}"] = {
-              runWithMode(
-                env.EFFECTIVE_EXECUTION_MODE,
-                params.DEV_KUBE_CONTEXT,
-                params.DEV_TEST_NAMESPACE,
-                'alpine:3.20',
-                """
-                  apk add --no-cache curl git >/dev/null
-                  git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
-                  cd /tmp/go-micro
-                  chmod +x tests/*/run.sh
-                  ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}
-                """,
-                "./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}"
-              )
+    // Các nhánh Dependency / Business / Route / k6 chạy song song (sau khi cả khối xong mới tới Promote).
+    stage('Quality gate') {
+      parallel {
+        stage('Dependency Check') {
+          when {
+            anyOf {
+              expression { params.PIPELINE_SCOPE == 'full' }
+              expression { params.PIPELINE_SCOPE == 'dependency-only' }
             }
           }
-          parallel branches
-        }
-      }
-    }
-
-    stage('Business Smoke Test') {
-      steps {
-        script {
-          def allBiz = ['product', 'inventory', 'order', 'payment', 'noti']
-          def svcs = expandServicesCsv(params.BUSINESS_SERVICES, allBiz)
-          def branches = [:]
-          svcs.each { svc ->
-            branches["business-${svc}"] = {
-              runWithMode(
-                env.EFFECTIVE_EXECUTION_MODE,
-                params.DEV_KUBE_CONTEXT,
-                params.DEV_TEST_NAMESPACE,
-                'alpine:3.20',
-                """
-                  apk add --no-cache curl git >/dev/null
-                  git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
-                  cd /tmp/go-micro
-                  chmod +x tests/*/run.sh
-                  ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}
-                """,
-                "./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}"
-              )
+          steps {
+            script {
+              def allDep = ['product', 'inventory', 'order', 'payment', 'noti']
+              def svcs = expandServicesCsv(params.DEPENDENCY_SERVICES, allDep)
+              def branches = [:]
+              svcs.each { svc ->
+                branches["dependency-${svc}"] = {
+                  runWithMode(
+                    env.EFFECTIVE_EXECUTION_MODE,
+                    params.DEV_KUBE_CONTEXT,
+                    params.DEV_TEST_NAMESPACE,
+                    'alpine:3.20',
+                    """
+                      apk add --no-cache curl git >/dev/null
+                      git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
+                      cd /tmp/go-micro
+                      chmod +x tests/*/run.sh
+                      ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}
+                    """,
+                    "./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}"
+                  )
+                }
+              }
+              parallel branches
             }
           }
-          parallel branches
         }
-      }
-    }
 
-    stage('Route Smoke') {
-      when {
-        expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
-      }
-      steps {
-        runWithMode(
-          env.EFFECTIVE_EXECUTION_MODE,
-          params.DEV_KUBE_CONTEXT,
-          params.DEV_TEST_NAMESPACE,
-          'alpine:3.20',
-          """
-            apk add --no-cache curl git >/dev/null
-            git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
-            cd /tmp/go-micro
-            chmod +x tests/*/run.sh
-            ./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
-          """,
-          "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
-        )
-      }
-    }
+        stage('Business Smoke Test') {
+          when {
+            anyOf {
+              expression { params.PIPELINE_SCOPE == 'full' }
+              expression { params.PIPELINE_SCOPE == 'business-only' }
+            }
+          }
+          steps {
+            script {
+              def allBiz = ['product', 'inventory', 'order', 'payment', 'noti']
+              def svcs = expandServicesCsv(params.BUSINESS_SERVICES, allBiz)
+              def branches = [:]
+              svcs.each { svc ->
+                branches["business-${svc}"] = {
+                  runWithMode(
+                    env.EFFECTIVE_EXECUTION_MODE,
+                    params.DEV_KUBE_CONTEXT,
+                    params.DEV_TEST_NAMESPACE,
+                    'alpine:3.20',
+                    """
+                      apk add --no-cache curl git >/dev/null
+                      git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
+                      cd /tmp/go-micro
+                      chmod +x tests/*/run.sh
+                      ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}
+                    """,
+                    "./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}"
+                  )
+                }
+              }
+              parallel branches
+            }
+          }
+        }
 
-    stage('Load Test (k6)') {
-      steps {
-        runWithMode(
-          env.EFFECTIVE_EXECUTION_MODE,
-          params.DEV_KUBE_CONTEXT,
-          params.DEV_TEST_NAMESPACE,
-          'grafana/k6:0.49.0',
-          """
-            cat >/tmp/k6-script.js <<'EOF'
-            import http from 'k6/http';
-            import { check, sleep } from 'k6';
-            const vus = __ENV.VUS || 10;
-            const duration = __ENV.DURATION || '30s';
-            const errorRate = __ENV.ERROR_RATE || '0.1';
-            const service = __ENV.SERVICE_NAME || 'product';
-            const target = __ENV.TARGET_URL || 'localhost';
-            export const options = { vus: vus, duration: duration, thresholds: { http_req_failed: ['rate<' + errorRate], http_req_duration: ['p(95)<2000'] } };
-            function getPrefix(s) { return ({ product:'/api/v1/products', order:'/api/v1/orders', inventory:'/api/v1/inventory', noti:'/api/v1/notifications', payment:'/api/v1/payments', client:'/' }[s] || '/api/v1/products'); }
-            function probePath(s) { if (s === 'client') return '/'; if (s === 'order') return '/orders'; return '/health'; }
-            export default function () { const prefix = getPrefix(service); const path = probePath(service); const params = { headers: { Host: 'dev.go-micro.local' } }; const res = http.get('http://' + target + prefix + path, params); check(res, { 'status is 200': (r) => r.status === 200 }); sleep(0.3); }
-            EOF
-            TARGET_URL=${params.BACKEND_IP} SERVICE_NAME=${params.K6_SERVICE_NAME} VUS=${params.K6_VUS} DURATION=${params.K6_DURATION} ERROR_RATE=${params.K6_ERROR_RATE} k6 run /tmp/k6-script.js
-          """,
-          """docker run --rm \
-            -e TARGET_URL=${params.BACKEND_IP} \
-            -e SERVICE_NAME=${params.K6_SERVICE_NAME} \
-            -e VUS=${params.K6_VUS} \
-            -e DURATION=${params.K6_DURATION} \
-            -e ERROR_RATE=${params.K6_ERROR_RATE} \
-            -v "\$(pwd)/tests/load-test/k6-script.js:/scripts/k6-script.js:ro" \
-            grafana/k6:0.49.0 run /scripts/k6-script.js"""
-        )
+        stage('Route Smoke') {
+          when {
+            allOf {
+              expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
+              anyOf {
+                expression { params.PIPELINE_SCOPE == 'full' }
+                expression { params.PIPELINE_SCOPE == 'route-smoke-only' }
+              }
+            }
+          }
+          steps {
+            runWithMode(
+              env.EFFECTIVE_EXECUTION_MODE,
+              params.DEV_KUBE_CONTEXT,
+              params.DEV_TEST_NAMESPACE,
+              'alpine:3.20',
+              """
+                apk add --no-cache curl git >/dev/null
+                git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
+                cd /tmp/go-micro
+                chmod +x tests/*/run.sh
+                ./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
+              """,
+              "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
+            )
+          }
+        }
+
+        stage('Load Test (k6)') {
+          when {
+            anyOf {
+              expression { params.PIPELINE_SCOPE == 'full' }
+              expression { params.PIPELINE_SCOPE == 'load-only' }
+            }
+          }
+          steps {
+            runWithMode(
+              env.EFFECTIVE_EXECUTION_MODE,
+              params.DEV_KUBE_CONTEXT,
+              params.DEV_TEST_NAMESPACE,
+              'grafana/k6:0.49.0',
+              """
+                cat >/tmp/k6-script.js <<'EOF'
+                import http from 'k6/http';
+                import { check, sleep } from 'k6';
+                const vus = __ENV.VUS || 10;
+                const duration = __ENV.DURATION || '30s';
+                const errorRate = __ENV.ERROR_RATE || '0.1';
+                const service = __ENV.SERVICE_NAME || 'product';
+                const target = __ENV.TARGET_URL || 'localhost';
+                export const options = { vus: vus, duration: duration, thresholds: { http_req_failed: ['rate<' + errorRate], http_req_duration: ['p(95)<2000'] } };
+                function getPrefix(s) { return ({ product:'/api/v1/products', order:'/api/v1/orders', inventory:'/api/v1/inventory', noti:'/api/v1/notifications', payment:'/api/v1/payments', client:'/' }[s] || '/api/v1/products'); }
+                function probePath(s) { if (s === 'client') return '/'; if (s === 'order') return '/orders'; return '/health'; }
+                export default function () { const prefix = getPrefix(service); const path = probePath(service); const params = { headers: { Host: 'dev.go-micro.local' } }; const res = http.get('http://' + target + prefix + path, params); check(res, { 'status is 200': (r) => r.status === 200 }); sleep(0.3); }
+                EOF
+                TARGET_URL=${params.BACKEND_IP} SERVICE_NAME=${params.K6_SERVICE_NAME} VUS=${params.K6_VUS} DURATION=${params.K6_DURATION} ERROR_RATE=${params.K6_ERROR_RATE} k6 run /tmp/k6-script.js
+              """,
+              """docker run --rm \
+                -e TARGET_URL=${params.BACKEND_IP} \
+                -e SERVICE_NAME=${params.K6_SERVICE_NAME} \
+                -e VUS=${params.K6_VUS} \
+                -e DURATION=${params.K6_DURATION} \
+                -e ERROR_RATE=${params.K6_ERROR_RATE} \
+                -v "\$(pwd)/tests/load-test/k6-script.js:/scripts/k6-script.js:ro" \
+                grafana/k6:0.49.0 run /scripts/k6-script.js"""
+            )
+          }
+        }
       }
     }
 
     stage('Promote Rollout') {
       when {
-        expression { params.AUTO_PROMOTE && env.RESOLVED_ROLLOUT_SERVICE?.trim() }
+        allOf {
+          expression { params.PIPELINE_SCOPE == 'full' }
+          expression { params.AUTO_PROMOTE && env.RESOLVED_ROLLOUT_SERVICE?.trim() }
+        }
       }
       steps {
         script {
@@ -179,10 +216,10 @@ pipeline {
   post {
     failure {
       script {
-        if (params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
+        if (params.PIPELINE_SCOPE == 'full' && params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
           runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
         } else {
-          echo "Skip abort rollout: AUTO_ABORT=${params.AUTO_ABORT}, service='${env.RESOLVED_ROLLOUT_SERVICE ?: ''}'"
+          echo "Skip abort rollout: PIPELINE_SCOPE=${params.PIPELINE_SCOPE}, AUTO_ABORT=${params.AUTO_ABORT}, service='${env.RESOLVED_ROLLOUT_SERVICE ?: ''}'"
         }
       }
     }
