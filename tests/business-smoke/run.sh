@@ -29,17 +29,22 @@ curl_retry() {
   local url="$1"
   local method="${2:-GET}"
   local body="${3:-}"
+  local header_mode="${4:-default}"
+  local use_canary_header="$EXTRA_CANARY_HEADER"
+  if [ "$header_mode" = "no_canary" ]; then
+    use_canary_header=""
+  fi
   local tries=0
   while [ $tries -lt 10 ]; do
     if [ -n "$body" ]; then
-      if [ -n "$EXTRA_CANARY_HEADER" ]; then
-        RESP=$(curl -sS -H "Host: dev.go-micro.local" -H "$EXTRA_CANARY_HEADER" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+      if [ -n "$use_canary_header" ]; then
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -H "$use_canary_header" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
       else
         RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
       fi
     else
-      if [ -n "$EXTRA_CANARY_HEADER" ]; then
-        RESP=$(curl -sS -H "Host: dev.go-micro.local" -H "$EXTRA_CANARY_HEADER" -X "$method" "$url") && { echo "$RESP"; return 0; }
+      if [ -n "$use_canary_header" ]; then
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -H "$use_canary_header" -X "$method" "$url") && { echo "$RESP"; return 0; }
       else
         RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url") && { echo "$RESP"; return 0; }
       fi
@@ -118,11 +123,13 @@ case "$SERVICE" in
     I_BASE="http://${TARGET}/api/v1/inventory"
     O_BASE="http://${TARGET}$(svc_prefix "$SERVICE")"
     PID=$(( $(date +%s) + RANDOM ))
-    P_CREATE=$(curl_retry "$P_BASE/products" "POST" "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}")
+    P_CREATE=$(curl_retry "$P_BASE/products" "POST" "{\"name\":\"order-pre-$PID\",\"description\":\"seed\",\"price\":15.5}" "no_canary")
     echo "[DBG] order seed product: $P_CREATE"
     REAL_PID=$(echo "$P_CREATE" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
     assert_field "order.seed_product_id" "$REAL_PID" "$P_CREATE"
-    curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$REAL_PID,\"quantity\":30,\"sku\":\"OSKU-$PID\",\"location\":\"B2\"}" >/dev/null
+    INV_SEED=$(curl_retry "$I_BASE/inventory" "POST" "{\"product_id\":$REAL_PID,\"quantity\":30,\"sku\":\"OSKU-$PID\",\"location\":\"B2\"}" "no_canary")
+    echo "[DBG] order seed inventory: $INV_SEED"
+    assert_contains "order.seed_inventory.product_id" "\"product_id\":$REAL_PID" "$INV_SEED"
     # Inventory write có thể chưa thấy ngay ở check endpoint -> chờ available=true trước khi tạo order.
     wait_inventory_available "$I_BASE" "$REAL_PID" 1
     ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":15.5}")
