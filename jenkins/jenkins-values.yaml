@@ -13,6 +13,9 @@ controller:
   # Plugin bắt buộc cho JCasC + Job DSL pipeline seed.
   # Nếu thiếu `configuration-as-code`/`job-dsl` thì file configScripts không tạo được job.
   installPlugins:
+    - kubernetes
+    - workflow-aggregator
+    - pipeline-model-definition
     - configuration-as-code
     - job-dsl
     - git

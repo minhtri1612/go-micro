@@ -1,11 +1,12 @@
-# Đồng bộ chart; đổi version → build lại image. Core image phải ≥ version transitive deps (CasC/groovy-api…).
-kubernetes:4230.vceef11cb_ca_37
-workflow-aggregator:596.v8c21c963d92d
-workflow-api:1373.v7b_813f10efa_b_
-workflow-cps:4165.vf547819734da_
-workflow-scm-step:437.v05a_f66b_e5ef8
-workflow-support:968.v8f17397e87b_8
-pipeline-stage-view:2.41
-git:5.2.2
-configuration-as-code:1963.v24e046127a_3f
-job-dsl:1.87
+# Danh sách plugin chính cho Jenkins GitOps (bỏ version cứng để tránh lỗi tải từ Update Center)
+kubernetes
+workflow-aggregator
+pipeline-model-definition
+git
+configuration-as-code
+job-dsl
+pipeline-stage-view
+workflow-api
+workflow-cps
+workflow-scm-step
+workflow-support
