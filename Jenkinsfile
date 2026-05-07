@@ -249,16 +249,16 @@ def parseTimeoutSeconds(String raw) {
   if (!t) {
     return 600
   }
-  if (t ==~ /\\d+/) {
+  if (t ==~ /\d+/) {
     return t.toInteger()
   }
-  if (t ==~ /\\d+s/) {
+  if (t ==~ /\d+s/) {
     return t[0..-2].toInteger()
   }
-  if (t ==~ /\\d+m/) {
+  if (t ==~ /\d+m/) {
     return t[0..-2].toInteger() * 60
   }
-  if (t ==~ /\\d+h/) {
+  if (t ==~ /\d+h/) {
     return t[0..-2].toInteger() * 3600
   }
   error("POD_WAIT_TIMEOUT không hợp lệ: '${raw}'. Dùng dạng 300s, 10m, 1h hoặc số giây.")
