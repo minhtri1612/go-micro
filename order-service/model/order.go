@@ -21,8 +21,9 @@ type InventoryCheck struct {
 
 // InventoryResponse is the response from inventory service
 type InventoryResponse struct {
-	Available bool   `json:"available"`
-	Message   string `json:"message,omitempty"`
+	Available   bool   `json:"available"`
+	IsAvailable bool   `json:"is_available"`
+	Message     string `json:"message,omitempty"`
 }
 
 // OrderStatusUpdate is used to notify about order status updates

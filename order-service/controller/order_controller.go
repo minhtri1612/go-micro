@@ -214,7 +214,9 @@ func checkInventoryAvailable(productID int, quantity int) (bool, error) {
 		return false, fmt.Errorf("failed to decode inventory response: %w", err)
 	}
 
-	return invResp.Available, nil
+	// Backward/forward compatible with inventory-service payload changes.
+	// Old key: "available", new key: "is_available".
+	return invResp.Available || invResp.IsAvailable, nil
 }
 
 // CreateOrder handles creation of a new order
