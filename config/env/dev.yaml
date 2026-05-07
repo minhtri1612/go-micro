@@ -40,6 +40,7 @@ rollout:
       - pause:
           duration: 1m
       - setWeight: 50
+      - pause: {}
       - setWeight: 100
 
 product:
