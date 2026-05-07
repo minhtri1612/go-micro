@@ -100,12 +100,12 @@ case "$SERVICE" in
     # 3. POST /inventory/check — available (qty=9 >= 1)
     CHECK_OK=$(curl -sS -H "Host: dev.go-micro.local" -X POST "$BASE/inventory/check" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":1}")
     echo "[DBG] inventory dep check ok: $CHECK_OK"
-    assert_contains "inventory.dep.check.available" "\"available\":true" "$CHECK_OK"
+    assert_contains "inventory.dep.check.available" "\"is_available\":true" "$CHECK_OK"
 
     # 4. POST /inventory/check — not available (qty=9 < 999)
     CHECK_FAIL=$(curl -sS -H "Host: dev.go-micro.local" -X POST "$BASE/inventory/check" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":999}")
     echo "[DBG] inventory dep check fail: $CHECK_FAIL"
-    assert_contains "inventory.dep.check.not_available" "\"available\":false" "$CHECK_FAIL"
+    assert_contains "inventory.dep.check.not_available" "\"is_available\":false" "$CHECK_FAIL"
 
     # 5. PUT /inventory/:id — update quantity
     PUT_BODY=$(curl -sS -H "Host: dev.go-micro.local" -X PUT "$BASE/inventory/$INV_ID" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":50,\"sku\":\"DSKU-$PID-upd\",\"location\":\"Z9\"}")
