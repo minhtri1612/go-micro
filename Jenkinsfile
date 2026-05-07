@@ -47,6 +47,7 @@ pipeline {
     string(name: 'K6_VUS', defaultValue: '5', description: 'k6 virtual users')
     string(name: 'K6_DURATION', defaultValue: '15s', description: 'k6 duration')
     string(name: 'K6_ERROR_RATE', defaultValue: '0.1', description: 'k6 http_req_failed threshold (rate<value)')
+    string(name: 'POD_WAIT_TIMEOUT', defaultValue: '600s', description: 'Timeout chờ mỗi pod test hoàn thành (ví dụ: 300s, 600s).')
   }
 
   stages {
@@ -201,14 +202,20 @@ def expandServicesCsv(String raw, List allList) {
 def runInDevPod(String kubeContext, String namespace, String image, String scriptBody) {
   String podName = "ci-${env.BUILD_NUMBER}-${java.util.UUID.randomUUID().toString().take(8)}".toLowerCase()
   String escaped = scriptBody.stripIndent().trim().replace("'", "'\"'\"'")
+  String timeout = (params.POD_WAIT_TIMEOUT ?: '600s').trim()
   sh """
     set -e
     kubectl --context ${kubeContext} -n ${namespace} run ${podName} --image=${image} --restart=Never --command -- sh -lc '${escaped}'
-    kubectl --context ${kubeContext} -n ${namespace} wait --for=jsonpath='{.status.phase}'=Succeeded pod/${podName} --timeout=1200s || true
+    kubectl --context ${kubeContext} -n ${namespace} wait --for=jsonpath='{.status.phase}'=Succeeded pod/${podName} --timeout=${timeout} || true
     kubectl --context ${kubeContext} -n ${namespace} logs ${podName}
     PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}')
+    if [ "\$PHASE" != "Succeeded" ]; then
+      echo "Pod ${podName} ended with phase \$PHASE (timeout=${timeout})"
+      kubectl --context ${kubeContext} -n ${namespace} describe pod/${podName} || true
+      kubectl --context ${kubeContext} -n ${namespace} delete pod/${podName} --ignore-not-found=true >/dev/null
+      exit 1
+    fi
     kubectl --context ${kubeContext} -n ${namespace} delete pod/${podName} --ignore-not-found=true >/dev/null
-    [ "\$PHASE" = "Succeeded" ] || (echo "Pod ${podName} failed with phase \$PHASE" && exit 1)
   """
 }
 
