@@ -145,6 +145,69 @@ Hay gặp: **version plugin không khớp image/chart** → init `jenkins-plugin
 
 **`app wait --health`**: Argo chỉ Healthy khi StatefulSet xong; Jenkins + plugin có thể Progressing lâu — đừng hard-code expect Healthy trong vài phút.
 
+### 2.2) ArgoCD Rollout UI Extension (xem % traffic ngay trên Argo UI)
+
+Để thấy tab **Rollout** trực tiếp trong ArgoCD (không cần mở dashboard riêng), cần cài UI extension vào `argocd-server`.
+
+> [!NOTE]
+> Chỉ thêm `extension.config` trong `argocd-cm` là chưa đủ; cần có initContainer tải `extension.tar` vào `/tmp/extensions`.
+
+```bash
+kubectl --context kind-management -n argocd patch configmap argocd-cm --type merge -p '{
+  "data":{
+    "extension.config":"extensions:\n  - name: rollout-extension\n    url: https://github.com/argoproj-labs/rollout-extension/releases/download/v0.3.7/extension.tar\n",
+    "resource.customizations":"argoproj.io/Rollout:\n  ui.extensions: |\n    - name: rollout-extension\n"
+  }
+}'
+
+kubectl --context kind-management -n argocd patch deployment argocd-server --type strategic -p '{
+  "spec":{"template":{"spec":{
+    "volumes":[{"name":"extensions","emptyDir":{}}],
+    "initContainers":[
+      {"name":"rollout-extension","image":"quay.io/argoprojlabs/argocd-extension-installer:v0.0.8",
+       "env":[{"name":"EXTENSION_URL","value":"https://github.com/argoproj-labs/rollout-extension/releases/download/v0.3.7/extension.tar"}],
+       "volumeMounts":[{"name":"extensions","mountPath":"/tmp/extensions/"}],
+       "securityContext":{"runAsUser":1000,"allowPrivilegeEscalation":false}}
+    ],
+    "containers":[{"name":"server","volumeMounts":[{"name":"extensions","mountPath":"/tmp/extensions/"}]}]
+  }}}
+}'
+
+kubectl --context kind-management -n argocd rollout status deploy/argocd-server --timeout=240s
+kubectl --context kind-management -n argocd logs deploy/argocd-server -c rollout-extension --tail=50
+```
+
+Sau khi cài:
+
+- Hard refresh Argo UI (`Ctrl+Shift+R`) hoặc mở private tab.
+- Vào app -> bấm resource `Rollout` (icon `R`) -> sẽ có tab **Rollout**.
+- Có thể soi `%` tại:
+  - `status.currentWeight` (Rollout),
+  - hoặc `TraefikService` weighted services (`stable/canary`).
+
+### 2.3) Jenkins external quality gate (manual Promote/Rollback)
+
+Pipeline `Jenkinsfile` đã hỗ trợ gate thủ công sau khi test pass:
+
+- Gate hiển thị lựa chọn:
+  - `Promote to stable`
+  - `Rollback now`
+- Khi fail và `AUTO_ABORT=false`, có thêm fail gate:
+  - `Rollback now`
+  - `Do nothing`
+
+Để chắc chắn nút gate xuất hiện:
+
+```text
+PIPELINE_SCOPE=full
+AUTO_PROMOTE=false
+ENABLE_MANUAL_ROLLOUT_GATE=true
+ROLLOUT_SERVICE=<service cụ thể, ví dụ product>   # tránh để auto khi DEP/BIZ = all
+```
+
+> [!IMPORTANT]
+> Không dùng **Restart from stage: Promote Rollout** nếu muốn giữ đúng quy trình gate; thao tác này có thể bỏ qua phần test/gate trước đó. Hãy dùng `Build with Parameters` cho run mới.
+
 ---
 
 ## 3) Register dev/staging/prod clusters to Argo CD
