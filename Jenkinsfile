@@ -1,5 +1,6 @@
 // External quality gate pipeline: dependency/business/route smoke + k6.
 // Agent cần: curl, sh; stage k6 cần Docker (CLI + quyền chạy docker run) hoặc tự đổi stage sang image có sẵn k6.
+// Bốn stage test chạy song song (Declarative parallel); trong Dependency/Business các service chạy tuần tự để Blue Ocean không vẽ nhầm thành chuỗi tuần tự (tránh lồng script { parallel }).
 
 pipeline {
   agent {
@@ -54,8 +55,8 @@ pipeline {
       }
     }
 
-    // Các nhánh Dependency / Business / Route / k6 chạy song song (sau khi cả khối xong mới tới Promote).
-    stage('Quality gate') {
+    // Bốn stage lớn song song (Blue Ocean vẽ sai nếu lồng thêm script { parallel } bên trong từng stage).
+    stage('Parallel tests') {
       parallel {
         stage('Dependency Check') {
           when {
@@ -68,26 +69,22 @@ pipeline {
             script {
               def allDep = ['product', 'inventory', 'order', 'payment', 'noti']
               def svcs = expandServicesCsv(params.DEPENDENCY_SERVICES, allDep)
-              def branches = [:]
               svcs.each { svc ->
-                branches["dependency-${svc}"] = {
-                  runWithMode(
-                    env.EFFECTIVE_EXECUTION_MODE,
-                    params.DEV_KUBE_CONTEXT,
-                    params.DEV_TEST_NAMESPACE,
-                    'alpine:3.20',
-                    """
-                      apk add --no-cache curl git >/dev/null
-                      git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
-                      cd /tmp/go-micro
-                      chmod +x tests/*/run.sh
-                      ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}
-                    """,
-                    "./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}"
-                  )
-                }
+                runWithMode(
+                  env.EFFECTIVE_EXECUTION_MODE,
+                  params.DEV_KUBE_CONTEXT,
+                  params.DEV_TEST_NAMESPACE,
+                  'alpine:3.20',
+                  """
+                    apk add --no-cache curl git >/dev/null
+                    git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
+                    cd /tmp/go-micro
+                    chmod +x tests/*/run.sh
+                    ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}
+                  """,
+                  "./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}"
+                )
               }
-              parallel branches
             }
           }
         }
@@ -103,26 +100,22 @@ pipeline {
             script {
               def allBiz = ['product', 'inventory', 'order', 'payment', 'noti']
               def svcs = expandServicesCsv(params.BUSINESS_SERVICES, allBiz)
-              def branches = [:]
               svcs.each { svc ->
-                branches["business-${svc}"] = {
-                  runWithMode(
-                    env.EFFECTIVE_EXECUTION_MODE,
-                    params.DEV_KUBE_CONTEXT,
-                    params.DEV_TEST_NAMESPACE,
-                    'alpine:3.20',
-                    """
-                      apk add --no-cache curl git >/dev/null
-                      git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
-                      cd /tmp/go-micro
-                      chmod +x tests/*/run.sh
-                      ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}
-                    """,
-                    "./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}"
-                  )
-                }
+                runWithMode(
+                  env.EFFECTIVE_EXECUTION_MODE,
+                  params.DEV_KUBE_CONTEXT,
+                  params.DEV_TEST_NAMESPACE,
+                  'alpine:3.20',
+                  """
+                    apk add --no-cache curl git >/dev/null
+                    git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
+                    cd /tmp/go-micro
+                    chmod +x tests/*/run.sh
+                    ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}
+                  """,
+                  "./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}"
+                )
               }
-              parallel branches
             }
           }
         }
