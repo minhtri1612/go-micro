@@ -7,6 +7,12 @@ TARGET="${2:-localhost}"
 
 echo "Running Business Smoke Test for Service: $SERVICE against Target: $TARGET"
 
+EXTRA_CANARY_HEADER=""
+if [ "${CANARY_HEADER:-false}" = "true" ]; then
+  EXTRA_CANARY_HEADER="X-Canary: true"
+  echo "[DBG] CANARY_HEADER enabled for business-smoke"
+fi
+
 svc_prefix() {
   case "$1" in
     product) echo /api/v1/products ;;
@@ -26,9 +32,17 @@ curl_retry() {
   local tries=0
   while [ $tries -lt 10 ]; do
     if [ -n "$body" ]; then
-      RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+      if [ -n "$EXTRA_CANARY_HEADER" ]; then
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -H "$EXTRA_CANARY_HEADER" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+      else
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+      fi
     else
-      RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url") && { echo "$RESP"; return 0; }
+      if [ -n "$EXTRA_CANARY_HEADER" ]; then
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -H "$EXTRA_CANARY_HEADER" -X "$method" "$url") && { echo "$RESP"; return 0; }
+      else
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url") && { echo "$RESP"; return 0; }
+      fi
     fi
     tries=$((tries+1))
     sleep 3
@@ -91,7 +105,7 @@ case "$SERVICE" in
   inventory)
     BASE="http://${TARGET}$(svc_prefix "$SERVICE")"
     PID=$((1000 + RANDOM % 9000))
-    CREATE_BODY=$(curl -sS -H "Host: dev.go-micro.local" -X POST "$BASE/inventory" -H "Content-Type: application/json" -d "{\"product_id\":$PID,\"quantity\":20,\"sku\":\"SKU-$PID\",\"location\":\"A1\"}")
+    CREATE_BODY=$(curl_retry "$BASE/inventory" "POST" "{\"product_id\":$PID,\"quantity\":20,\"sku\":\"SKU-$PID\",\"location\":\"A1\"}")
     echo "[DBG] inventory create: $CREATE_BODY"
     INV_ID=$(echo "$CREATE_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
     assert_field "inventory.id" "$INV_ID" "$CREATE_BODY"
@@ -128,7 +142,7 @@ case "$SERVICE" in
     ;;
   noti)
     BASE="http://${TARGET}$(svc_prefix "$SERVICE")"
-    NOTI_BODY=$(curl -sS -H "Host: dev.go-micro.local" -X POST "$BASE/notifications" -H "Content-Type: application/json" -d '{"order_id":9001,"customer_id":1,"message":"canary smoke","status":"pending"}')
+    NOTI_BODY=$(curl_retry "$BASE/notifications" "POST" '{"order_id":9001,"customer_id":1,"message":"canary smoke","status":"pending"}')
     echo "[DBG] noti create: $NOTI_BODY"
     NOTI_ID=$(echo "$NOTI_BODY" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
     assert_field "noti.id" "$NOTI_ID" "$NOTI_BODY"

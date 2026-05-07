@@ -7,6 +7,12 @@ TARGET="${2:-localhost}"
 
 echo "Running Dependency Check for Service: $SERVICE against Target: $TARGET"
 
+EXTRA_CANARY_HEADER=""
+if [ "${CANARY_HEADER:-false}" = "true" ]; then
+  EXTRA_CANARY_HEADER="X-Canary: true"
+  echo "[DBG] CANARY_HEADER enabled for dependency-check"
+fi
+
 svc_prefix() {
   case "$1" in
     product) echo /api/v1/products ;;
@@ -26,9 +32,17 @@ curl_retry() {
   local tries=0
   while [ $tries -lt 10 ]; do
     if [ -n "$body" ]; then
-      RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+      if [ -n "$EXTRA_CANARY_HEADER" ]; then
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -H "$EXTRA_CANARY_HEADER" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+      else
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url" -H "Content-Type: application/json" -d "$body") && { echo "$RESP"; return 0; }
+      fi
     else
-      RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url") && { echo "$RESP"; return 0; }
+      if [ -n "$EXTRA_CANARY_HEADER" ]; then
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -H "$EXTRA_CANARY_HEADER" -X "$method" "$url") && { echo "$RESP"; return 0; }
+      else
+        RESP=$(curl -sS -H "Host: dev.go-micro.local" -X "$method" "$url") && { echo "$RESP"; return 0; }
+      fi
     fi
     tries=$((tries+1))
     sleep 3
@@ -152,9 +166,15 @@ case "$SERVICE" in
     wait_inventory_available "$I_BASE" "$REAL_PID" 1
 
     # 2. Test: inventory check FAIL (quantity=99999 > 25 available)
-    INV_FAIL_STATUS=$(curl -sS -H "Host: dev.go-micro.local" -o /dev/null -w "%{http_code}" -X POST "$O_BASE/orders" \
-      -H "Content-Type: application/json" \
-      -d "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":99999,\"total_price\":99.9}")
+    if [ -n "$EXTRA_CANARY_HEADER" ]; then
+      INV_FAIL_STATUS=$(curl -sS -H "Host: dev.go-micro.local" -H "$EXTRA_CANARY_HEADER" -o /dev/null -w "%{http_code}" -X POST "$O_BASE/orders" \
+        -H "Content-Type: application/json" \
+        -d "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":99999,\"total_price\":99.9}")
+    else
+      INV_FAIL_STATUS=$(curl -sS -H "Host: dev.go-micro.local" -o /dev/null -w "%{http_code}" -X POST "$O_BASE/orders" \
+        -H "Content-Type: application/json" \
+        -d "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":99999,\"total_price\":99.9}")
+    fi
     [ "$INV_FAIL_STATUS" = "400" ] || fail "order.dep.inv_check_fail expected HTTP 400, got $INV_FAIL_STATUS" "inventory should reject qty=99999"
     echo "[DBG] order dep inv_check_fail: HTTP $INV_FAIL_STATUS (expected 400) OK"
 
@@ -172,31 +192,26 @@ case "$SERVICE" in
     assert_contains "order.dep.list.id" "\"id\":$ORDER_ID" "$ORDER_LIST"
 
     # 5. GET /orders/:id — lấy đúng order theo ID
-    GET_BODY=$(curl -sS -H "Host: dev.go-micro.local" "$O_BASE/orders/$ORDER_ID")
+    GET_BODY=$(curl_retry "$O_BASE/orders/$ORDER_ID")
     echo "[DBG] order dep get: $GET_BODY"
     assert_contains "order.dep.get.id" "\"id\":$ORDER_ID" "$GET_BODY"
     assert_contains "order.dep.get.customer_id" "\"customer_id\":1" "$GET_BODY"
     assert_contains "order.dep.get.product_id" "\"product_id\":$REAL_PID" "$GET_BODY"
 
     # 6. PATCH /orders/:id/status — đổi status sang processing
-    PATCH_BODY=$(curl -sS -H "Host: dev.go-micro.local" -X PATCH "$O_BASE/orders/$ORDER_ID/status" \
-      -H "Content-Type: application/json" -d '{"status":"processing"}')
+    PATCH_BODY=$(curl_retry "$O_BASE/orders/$ORDER_ID/status" "PATCH" '{"status":"processing"}')
     echo "[DBG] order dep patch status: $PATCH_BODY"
     assert_contains "order.dep.patch.order_id" "\"order_id\":$ORDER_ID" "$PATCH_BODY"
     assert_contains "order.dep.patch.status" "\"status\":\"processing\"" "$PATCH_BODY"
 
     # 7. PUT /orders/:id — update quantity và total_price
-    PUT_BODY=$(curl -sS -H "Host: dev.go-micro.local" -X PUT "$O_BASE/orders/$ORDER_ID" \
-      -H "Content-Type: application/json" \
-      -d "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":2,\"total_price\":43.0,\"status\":\"processing\"}")
+    PUT_BODY=$(curl_retry "$O_BASE/orders/$ORDER_ID" "PUT" "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":2,\"total_price\":43.0,\"status\":\"processing\"}")
     echo "[DBG] order dep put: $PUT_BODY"
     assert_contains "order.dep.put.id" "\"id\":$ORDER_ID" "$PUT_BODY"
     assert_contains "order.dep.put.quantity" "\"quantity\":2" "$PUT_BODY"
 
     # 8. POST /orders/with-payment — order path tích hợp payment
-    WITH_PAY=$(curl -sS -H "Host: dev.go-micro.local" -X POST "$O_BASE/orders/with-payment" \
-      -H "Content-Type: application/json" \
-      -d "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5,\"currency\":\"usd\"}")
+    WITH_PAY=$(curl_retry "$O_BASE/orders/with-payment" "POST" "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5,\"currency\":\"usd\"}")
     echo "[DBG] order dep with-payment: $WITH_PAY"
     assert_contains "order.dep.with_payment.order" "\"order\"" "$WITH_PAY"
     if ! echo "$WITH_PAY" | grep -qF "\"payment\"" && ! echo "$WITH_PAY" | grep -qF "\"payment_error\""; then
@@ -204,15 +219,13 @@ case "$SERVICE" in
     fi
 
     # 9. POST /orders/batch — xử lý batch tối thiểu
-    BATCH_BODY=$(curl -sS -H "Host: dev.go-micro.local" -X POST "$O_BASE/orders/batch" \
-      -H "Content-Type: application/json" \
-      -d "[{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5}]")
+    BATCH_BODY=$(curl_retry "$O_BASE/orders/batch" "POST" "[{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5}]")
     echo "[DBG] order dep batch: $BATCH_BODY"
     assert_contains "order.dep.batch.total_orders" "\"total_orders\":1" "$BATCH_BODY"
     assert_contains "order.dep.batch.successful" "\"successful\":1" "$BATCH_BODY"
 
     # 10. DELETE /orders/:id — xóa order, verify response
-    DEL_BODY=$(curl -sS -H "Host: dev.go-micro.local" -X DELETE "$O_BASE/orders/$ORDER_ID")
+    DEL_BODY=$(curl_retry "$O_BASE/orders/$ORDER_ID" "DELETE")
     echo "[DBG] order dep delete: $DEL_BODY"
     assert_contains "order.dep.delete" "deleted successfully" "$DEL_BODY"
     ;;

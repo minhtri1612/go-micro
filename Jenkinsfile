@@ -267,6 +267,7 @@ def parseTimeoutSeconds(String raw) {
 def runDependencyCheckSteps() {
   def allDep = ['product', 'inventory', 'order', 'payment', 'noti']
   def svcs = expandServicesCsv(params.DEPENDENCY_SERVICES, allDep)
+  def canaryHeader = shouldEnableCanaryHeader() ? 'true' : 'false'
   svcs.each { svc ->
     runWithMode(
       env.EFFECTIVE_EXECUTION_MODE,
@@ -278,9 +279,9 @@ def runDependencyCheckSteps() {
         git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
         cd /tmp/go-micro
         chmod +x tests/*/run.sh
-        ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}
+        CANARY_HEADER=${canaryHeader} ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}
       """,
-      "./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}"
+      "CANARY_HEADER=${canaryHeader} ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}"
     )
   }
 }
@@ -288,6 +289,7 @@ def runDependencyCheckSteps() {
 def runBusinessSmokeSteps() {
   def allBiz = ['product', 'inventory', 'order', 'payment', 'noti']
   def svcs = expandServicesCsv(params.BUSINESS_SERVICES, allBiz)
+  def canaryHeader = shouldEnableCanaryHeader() ? 'true' : 'false'
   svcs.each { svc ->
     runWithMode(
       env.EFFECTIVE_EXECUTION_MODE,
@@ -299,9 +301,9 @@ def runBusinessSmokeSteps() {
         git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
         cd /tmp/go-micro
         chmod +x tests/*/run.sh
-        ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}
+        CANARY_HEADER=${canaryHeader} ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}
       """,
-      "./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}"
+      "CANARY_HEADER=${canaryHeader} ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}"
     )
   }
 }
@@ -354,6 +356,10 @@ def runK6LoadSteps() {
       -v "\$(pwd)/tests/load-test/k6-script.js:/scripts/k6-script.js:ro" \
       grafana/k6:0.49.0 run /scripts/k6-script.js"""
   )
+}
+
+def shouldEnableCanaryHeader() {
+  return params.ROUTE_MODE?.toString()?.trim()?.equalsIgnoreCase('canary')
 }
 
 def validateKubeContext(String kubeContext) {
