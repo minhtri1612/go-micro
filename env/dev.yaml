@@ -4,8 +4,8 @@ env: dev
 
 product:
   image:
-    tag: "product-service-v1.0.3"
-  replicaCount: 4
+    tag: "product-service-v1.0.1"
+  replicaCount: 7
   rollout:
     enabled: true
     strategy: canary
