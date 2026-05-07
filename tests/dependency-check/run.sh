@@ -65,6 +65,20 @@ assert_contains() {
   echo "$body" | grep -qF "$pattern" || fail "$label not found (expected '$pattern')" "$body"
 }
 
+assert_order_created_or_explain() {
+  local label="$1" body="$2"
+  local order_id
+  order_id=$(echo "$body" | sed -n 's/.*\"id\":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+  if [ -n "$order_id" ]; then
+    echo "$order_id"
+    return 0
+  fi
+  if echo "$body" | grep -qF "Product not available in requested quantity"; then
+    fail "$label order-service rejected although inventory/check was ready (likely old order image not compatible with is_available field)" "$body"
+  fi
+  fail "$label missing or empty" "$body"
+}
+
 wait_inventory_available() {
   local base="$1" pid="$2" qty="$3"
   local tries=0
@@ -188,8 +202,7 @@ case "$SERVICE" in
     # 3. POST /orders — tạo order hợp lệ
     ORDER_BODY=$(curl_retry "$O_BASE/orders" "POST" "{\"customer_id\":1,\"product_id\":$REAL_PID,\"quantity\":1,\"total_price\":21.5}")
     echo "[DBG] order dep create: $ORDER_BODY"
-    ORDER_ID=$(echo "$ORDER_BODY" | sed -n 's/.*\"id\":[[:space:]]*\([0-9][0-9]*\).*/\1/p')
-    assert_field "order.dep.id" "$ORDER_ID" "$ORDER_BODY"
+    ORDER_ID=$(assert_order_created_or_explain "order.dep.id" "$ORDER_BODY")
     assert_contains "order.dep.total_price" "21.5" "$ORDER_BODY"
     assert_contains "order.dep.status" "\"status\":\"pending\"" "$ORDER_BODY"
 
