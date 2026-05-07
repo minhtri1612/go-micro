@@ -26,19 +26,20 @@ fi
 
 # In a real CI environment, GATEWAY would point to the LoadBalancer IP or actual Traefik entrypoint.
 URL="http://$HOST$PREFIX/health"
+CURL_COMMON_FLAGS="--connect-timeout 5 --max-time 20 --retry 2 --retry-delay 1 --retry-connrefused"
 
 echo "Requesting: $URL mode=$MODE"
 if [ -n "$RESOLVE_IP" ]; then
   if [ -n "$HEADER" ]; then
-    RESPONSE=$(curl -i -s --resolve "${HOST}:80:${RESOLVE_IP}" -X GET -H "Host: $HOST" -H "$HEADER" "$URL" || echo "CURL_FAILED")
+    RESPONSE=$(curl -i -s $CURL_COMMON_FLAGS --resolve "${HOST}:80:${RESOLVE_IP}" -X GET -H "Host: $HOST" -H "$HEADER" "$URL" || echo "CURL_FAILED")
   else
-    RESPONSE=$(curl -i -s --resolve "${HOST}:80:${RESOLVE_IP}" -X GET -H "Host: $HOST" "$URL" || echo "CURL_FAILED")
+    RESPONSE=$(curl -i -s $CURL_COMMON_FLAGS --resolve "${HOST}:80:${RESOLVE_IP}" -X GET -H "Host: $HOST" "$URL" || echo "CURL_FAILED")
   fi
 else
   if [ -n "$HEADER" ]; then
-    RESPONSE=$(curl -i -s -X GET -H "Host: $HOST" -H "$HEADER" "$URL" || echo "CURL_FAILED")
+    RESPONSE=$(curl -i -s $CURL_COMMON_FLAGS -X GET -H "Host: $HOST" -H "$HEADER" "$URL" || echo "CURL_FAILED")
   else
-    RESPONSE=$(curl -i -s -X GET -H "Host: $HOST" "$URL" || echo "CURL_FAILED")
+    RESPONSE=$(curl -i -s $CURL_COMMON_FLAGS -X GET -H "Host: $HOST" "$URL" || echo "CURL_FAILED")
   fi
 fi
 
