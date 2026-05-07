@@ -26,8 +26,10 @@ pipeline {
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
     string(name: 'ROLLOUT_NAMESPACE', defaultValue: 'microservices-dev', description: 'Namespace chứa Argo Rollout cần promote/abort.')
     string(name: 'ROLLOUT_SERVICE', defaultValue: 'auto', description: '`auto` = tự suy ra từ DEPENDENCY_SERVICES/BUSINESS_SERVICES (chỉ khi 1 service); hoặc ghi rõ service, ví dụ: inventory.')
-    booleanParam(name: 'AUTO_PROMOTE', defaultValue: true, description: 'Tự promote rollout khi toàn bộ quality gate pass.')
-    booleanParam(name: 'AUTO_ABORT', defaultValue: true, description: 'Tự abort rollout khi pipeline fail.')
+    booleanParam(name: 'AUTO_PROMOTE', defaultValue: false, description: 'Tự promote rollout khi toàn bộ quality gate pass. Nếu FALSE, Jenkins sẽ dừng lại hiện nút bấm cho anh duyệt.')
+    booleanParam(name: 'AUTO_ABORT', defaultValue: true, description: 'Tự abort rollout khi pipeline fail hoặc anh nhấn nút Abort.')
+    booleanParam(name: 'ENABLE_MANUAL_ROLLOUT_GATE', defaultValue: true, description: 'Hiện bước nút bấm Promote/Rollback trên Jenkins UI sau khi test pass.')
+    choice(name: 'ON_FAILURE_MANUAL_ACTION', choices: ['Rollback now', 'Do nothing'], description: 'Khi pipeline fail và AUTO_ABORT=false: chọn hành động mặc định cho bước manual fail gate.')
     string(name: 'TARGET_HOST', defaultValue: 'dev.go-micro.local', description: 'Host trong URL + header Host cho route smoke (Traefik/Ingress :80).')
     string(name: 'BACKEND_IP', defaultValue: '172.18.255.10', description: 'IP gateway/Ingress: dependency & business (http://IP:port), route smoke (--resolve), k6 TARGET_URL.')
     choice(
@@ -107,6 +109,36 @@ pipeline {
       }
     }
 
+    stage('Rollout Decision Gate') {
+      when {
+        allOf {
+          expression { params.PIPELINE_SCOPE == 'full' }
+          expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
+          expression { params.AUTO_PROMOTE == false && params.ENABLE_MANUAL_ROLLOUT_GATE == true }
+        }
+      }
+      steps {
+        script {
+          echo "--- QUALITY GATES PASSED ---"
+          echo "Chờ chọn hành động rollout cho service: ${env.RESOLVED_ROLLOUT_SERVICE}"
+          def decision = 'Promote to stable'
+          timeout(time: 30, unit: 'MINUTES') {
+            decision = input(
+              message: "Quality gate PASS cho [${env.RESOLVED_ROLLOUT_SERVICE}]. Chọn Promote hoặc Rollback.",
+              ok: 'Xác nhận',
+              parameters: [
+                choice(name: 'ROLLOUT_ACTION', choices: ['Promote to stable', 'Rollback now'], description: 'Hành động rollout')
+              ]
+            )
+          }
+          if (decision == 'Rollback now') {
+            runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+            error("Manual decision = rollback. Rollout đã abort theo yêu cầu.")
+          }
+        }
+      }
+    }
+
     stage('Dependency Check') {
       when {
         expression { params.PIPELINE_SCOPE == 'dependency-only' }
@@ -158,7 +190,8 @@ pipeline {
       when {
         allOf {
           expression { params.PIPELINE_SCOPE == 'full' }
-          expression { params.AUTO_PROMOTE && env.RESOLVED_ROLLOUT_SERVICE?.trim() }
+          expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
+          expression { params.AUTO_PROMOTE == true }
         }
       }
       steps {
@@ -174,6 +207,22 @@ pipeline {
       script {
         if (params.PIPELINE_SCOPE == 'full' && params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
           runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+        } else if (params.PIPELINE_SCOPE == 'full' && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
+          def failDecision = params.ON_FAILURE_MANUAL_ACTION ?: 'Rollback now'
+          timeout(time: 20, unit: 'MINUTES') {
+            failDecision = input(
+              message: "Pipeline FAILED cho [${env.RESOLVED_ROLLOUT_SERVICE}]. Chọn rollback hay giữ nguyên trạng thái rollout.",
+              ok: 'Xác nhận',
+              parameters: [
+                choice(name: 'FAILURE_ACTION', choices: ['Rollback now', 'Do nothing'], description: 'Hành động khi fail')
+              ]
+            )
+          }
+          if (failDecision == 'Rollback now') {
+            runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+          } else {
+            echo "Manual failure action: none (giữ nguyên rollout state)"
+          }
         } else {
           echo "Skip abort rollout: PIPELINE_SCOPE=${params.PIPELINE_SCOPE}, AUTO_ABORT=${params.AUTO_ABORT}, service='${env.RESOLVED_ROLLOUT_SERVICE ?: ''}'"
         }
