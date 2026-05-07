@@ -40,7 +40,7 @@ pipeline {
       choices: ['all', 'product', 'inventory', 'order', 'payment', 'noti'],
       description: 'Business smoke: `all` = lần lượt 5 service (lâu hơn); chọn 1 tên nếu chỉ cần smoke một service.'
     )
-    string(name: 'ROUTE_PREFIX', defaultValue: '/api/v1/products', description: 'Path prefix cho route smoke qua ingress/gateway.')
+    string(name: 'ROUTE_PREFIX', defaultValue: 'auto', description: '`auto` = suy từ BUSINESS_SERVICES (ưu tiên) hoặc DEPENDENCY_SERVICES khi chọn 1 service; cả hai `all` → `/api/v1/products`. Ghi path tường minh để override.')
     booleanParam(name: 'ROUTE_SMOKE', defaultValue: true, description: 'Chạy route smoke canary/preview (curl qua --resolve, không cần ghi /etc/hosts).')
     choice(name: 'ROUTE_MODE', choices: ['canary', 'preview', 'standard'], description: 'Mode route smoke để test traffic split trước promote.')
     string(name: 'K6_SERVICE_NAME', defaultValue: 'product', description: 'Service k6 load-test (map port trong tests/load-test/k6-script.js).')
@@ -57,8 +57,10 @@ pipeline {
         script {
           validateKubeContext(params.DEV_KUBE_CONTEXT)
           env.RESOLVED_ROLLOUT_SERVICE = resolveRolloutService(params.ROLLOUT_SERVICE, params.DEPENDENCY_SERVICES, params.BUSINESS_SERVICES)
+          env.EFFECTIVE_ROUTE_PREFIX = resolveEffectiveRoutePrefix(params.ROUTE_PREFIX, params.DEPENDENCY_SERVICES, params.BUSINESS_SERVICES)
           echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
           echo "Rollout target: ${params.ROLLOUT_NAMESPACE}/${env.RESOLVED_ROLLOUT_SERVICE ?: '(none)'}"
+          echo "Route smoke prefix: ${env.EFFECTIVE_ROUTE_PREFIX} (ROUTE_PREFIX param='${params.ROUTE_PREFIX}')"
         }
       }
     }
@@ -274,9 +276,9 @@ def runRouteSmokeSteps() {
       git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
       cd /tmp/go-micro
       chmod +x tests/*/run.sh
-      ./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
+      ./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${env.EFFECTIVE_ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
     """,
-    "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${params.ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
+    "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${env.EFFECTIVE_ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
   )
 }
 
@@ -322,6 +324,42 @@ def validateKubeContext(String kubeContext) {
   if (!contexts.contains(kubeContext.trim())) {
     error("Không tìm thấy context '${kubeContext}' trong Jenkins KUBECONFIG=${env.KUBECONFIG}. Context hiện có: ${contextsRaw ?: '(none)'}.")
   }
+}
+
+def serviceToRoutePrefix(String svc) {
+  if (!svc?.trim()) {
+    return '/api/v1/products'
+  }
+  switch (svc.trim().toLowerCase()) {
+    case 'product':
+      return '/api/v1/products'
+    case 'order':
+      return '/api/v1/orders'
+    case 'inventory':
+      return '/api/v1/inventory'
+    case 'noti':
+      return '/api/v1/notifications'
+    case 'payment':
+      return '/api/v1/payments'
+    default:
+      return '/api/v1/products'
+  }
+}
+
+def resolveEffectiveRoutePrefix(String routeParam, String depServices, String bizServices) {
+  def p = routeParam?.trim()
+  if (p && !p.equalsIgnoreCase('auto')) {
+    return p
+  }
+  def b = bizServices?.trim()?.toLowerCase()
+  def d = depServices?.trim()?.toLowerCase()
+  if (b && b != 'all') {
+    return serviceToRoutePrefix(b)
+  }
+  if (d && d != 'all') {
+    return serviceToRoutePrefix(d)
+  }
+  return '/api/v1/products'
 }
 
 def resolveRolloutService(String rolloutService, String depServices, String bizServices) {
