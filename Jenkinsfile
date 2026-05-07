@@ -203,11 +203,25 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
   String podName = "ci-${env.BUILD_NUMBER}-${java.util.UUID.randomUUID().toString().take(8)}".toLowerCase()
   String escaped = scriptBody.stripIndent().trim().replace("'", "'\"'\"'")
   String timeout = (params.POD_WAIT_TIMEOUT ?: '600s').trim()
+  int timeoutSeconds = parseTimeoutSeconds(timeout)
   sh """
     set -e
     kubectl --context ${kubeContext} -n ${namespace} run ${podName} --image=${image} --restart=Never --command -- sh -lc '${escaped}'
-    kubectl --context ${kubeContext} -n ${namespace} wait --for=jsonpath='{.status.phase}'=Succeeded pod/${podName} --timeout=${timeout} || true
-    kubectl --context ${kubeContext} -n ${namespace} logs ${podName}
+    START=\$(date +%s)
+    while true; do
+      PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null || echo Unknown)
+      if [ "\$PHASE" = "Succeeded" ] || [ "\$PHASE" = "Failed" ]; then
+        break
+      fi
+      NOW=\$(date +%s)
+      if [ \$((NOW-START)) -ge ${timeoutSeconds} ]; then
+        echo "Pod ${podName} timeout after ${timeout} (current phase=\$PHASE)"
+        PHASE="Timeout"
+        break
+      fi
+      sleep 2
+    done
+    kubectl --context ${kubeContext} -n ${namespace} logs ${podName} || true
     PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}')
     if [ "\$PHASE" != "Succeeded" ]; then
       echo "Pod ${podName} ended with phase \$PHASE (timeout=${timeout})"
@@ -228,6 +242,26 @@ def runWithMode(String mode, String kubeContext, String namespace, String image,
     set -e
     ${directScriptBody}
   """
+}
+
+def parseTimeoutSeconds(String raw) {
+  String t = (raw ?: '600s').trim().toLowerCase()
+  if (!t) {
+    return 600
+  }
+  if (t ==~ /\\d+/) {
+    return t.toInteger()
+  }
+  if (t ==~ /\\d+s/) {
+    return t[0..-2].toInteger()
+  }
+  if (t ==~ /\\d+m/) {
+    return t[0..-2].toInteger() * 60
+  }
+  if (t ==~ /\\d+h/) {
+    return t[0..-2].toInteger() * 3600
+  }
+  error("POD_WAIT_TIMEOUT không hợp lệ: '${raw}'. Dùng dạng 300s, 10m, 1h hoặc số giây.")
 }
 
 def runDependencyCheckSteps() {
