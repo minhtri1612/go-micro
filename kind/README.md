@@ -39,7 +39,7 @@ helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
   --version 1.19.2 \
   -f cilium/cilium-values-management.yaml \
   -f cilium/cilium-values-management-bootstrap.yaml \
-  --wait --timeout 15m
+  --wait --timeout 10m
 
 kind create cluster --name dev --config kind/dev-kind-config.yaml
 kind create cluster --name staging --config kind/staging-kind-config.yaml

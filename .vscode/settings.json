@@ -1,4 +1,7 @@
 {
     "kiroAgent.configureMCP": "Disabled",
-    "CodeGPT.apiKey": "CodeGPT Plus Beta"
+    "CodeGPT.apiKey": "CodeGPT Plus Beta",
+    "python.analysis.extraPaths": [
+        "./tests/lib"
+    ]
 }

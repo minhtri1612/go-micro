@@ -24,6 +24,7 @@ pipeline {
     )
     string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
+    string(name: 'DEV_TEST_SERVICE_ACCOUNT', defaultValue: 'go-micro-test-runner', description: 'ServiceAccount dùng cho pod test (cần có quyền list nodes cho K8s API node check).')
     string(name: 'ROLLOUT_NAMESPACE', defaultValue: 'microservices-dev', description: 'Namespace chứa Argo Rollout cần promote/abort.')
     string(name: 'ROLLOUT_SERVICE', defaultValue: 'auto', description: '`auto` = tự suy ra từ DEPENDENCY_SERVICES/BUSINESS_SERVICES (chỉ khi 1 service); hoặc ghi rõ service, ví dụ: inventory.')
     booleanParam(name: 'AUTO_PROMOTE', defaultValue: false, description: 'Tự promote rollout khi toàn bộ quality gate pass. Nếu FALSE, Jenkins sẽ dừng lại hiện nút bấm cho anh duyệt.')
@@ -46,6 +47,7 @@ pipeline {
     booleanParam(name: 'ROUTE_SMOKE', defaultValue: true, description: 'Chạy route smoke canary/preview (curl qua --resolve, không cần ghi /etc/hosts).')
     choice(name: 'ROUTE_MODE', choices: ['canary', 'preview', 'standard'], description: 'Mode route smoke để test traffic split trước promote.')
     booleanParam(name: 'CANARY_HEADER_API_TESTS', defaultValue: false, description: 'Bật để ép dependency/business gửi X-Canary:true. Mặc định tắt vì một số endpoint POST có thể trả 405 qua canary route.')
+    booleanParam(name: 'ENABLE_K8S_NODE_CHECK', defaultValue: true, description: 'Chạy check Kubernetes API thuần (requests) để list nodes trước test chính.')
     string(name: 'K6_SERVICE_NAME', defaultValue: 'product', description: 'Service k6 load-test (map port trong tests/load-test/k6-script.js).')
     string(name: 'K6_VUS', defaultValue: '5', description: 'k6 virtual users')
     string(name: 'K6_DURATION', defaultValue: '15s', description: 'k6 duration')
@@ -56,7 +58,6 @@ pipeline {
   stages {
     stage('Prepare') {
       steps {
-        sh 'chmod +x tests/*/run.sh'
         sh 'kubectl version --client'
         script {
           validateKubeContext(params.DEV_KUBE_CONTEXT)
@@ -65,6 +66,20 @@ pipeline {
           echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
           echo "Rollout target: ${params.ROLLOUT_NAMESPACE}/${env.RESOLVED_ROLLOUT_SERVICE ?: '(none)'}"
           echo "Route smoke prefix: ${env.EFFECTIVE_ROUTE_PREFIX} (ROUTE_PREFIX param='${params.ROUTE_PREFIX}')"
+        }
+      }
+    }
+
+    stage('K8s API Node Check') {
+      when {
+        allOf {
+          expression { params.ENABLE_K8S_NODE_CHECK == true }
+          expression { params.PIPELINE_SCOPE != 'load-only' }
+        }
+      }
+      steps {
+        script {
+          runK8sNodeCheckSteps()
         }
       }
     }
@@ -255,10 +270,11 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
   String podName = "ci-${env.BUILD_NUMBER}-${java.util.UUID.randomUUID().toString().take(8)}".toLowerCase()
   String escaped = scriptBody.stripIndent().trim().replace("'", "'\"'\"'")
   String timeout = (params.POD_WAIT_TIMEOUT ?: '600s').trim()
+  String serviceAccount = (params.DEV_TEST_SERVICE_ACCOUNT ?: 'default').trim()
   int timeoutSeconds = parseTimeoutSeconds(timeout)
   sh """
     set -e
-    kubectl --context ${kubeContext} -n ${namespace} run ${podName} --image=${image} --restart=Never --command -- sh -lc '${escaped}'
+    kubectl --context ${kubeContext} -n ${namespace} run ${podName} --image=${image} --restart=Never --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"${serviceAccount}"}}' --command -- sh -lc '${escaped}'
     START=\$(date +%s)
     while true; do
       PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null || echo Unknown)
@@ -325,15 +341,14 @@ def runDependencyCheckSteps() {
       env.EFFECTIVE_EXECUTION_MODE,
       params.DEV_KUBE_CONTEXT,
       params.DEV_TEST_NAMESPACE,
-      'alpine:3.20',
+      'python:3.11-slim',
       """
-        apk add --no-cache curl git >/dev/null
+        pip install requests >/dev/null 2>&1
         git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
         cd /tmp/go-micro
-        chmod +x tests/*/run.sh
-        CANARY_HEADER=${canaryHeader} ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}
+        CANARY_HEADER=${canaryHeader} python3 tests/dependency-check/run.py ${svc} ${params.BACKEND_IP}
       """,
-      "CANARY_HEADER=${canaryHeader} ./tests/dependency-check/run.sh ${svc} ${params.BACKEND_IP}"
+      "CANARY_HEADER=${canaryHeader} python3 tests/dependency-check/run.py ${svc} ${params.BACKEND_IP}"
     )
   }
 }
@@ -347,15 +362,14 @@ def runBusinessSmokeSteps() {
       env.EFFECTIVE_EXECUTION_MODE,
       params.DEV_KUBE_CONTEXT,
       params.DEV_TEST_NAMESPACE,
-      'alpine:3.20',
+      'python:3.11-slim',
       """
-        apk add --no-cache curl git >/dev/null
+        pip install requests >/dev/null 2>&1
         git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
         cd /tmp/go-micro
-        chmod +x tests/*/run.sh
-        CANARY_HEADER=${canaryHeader} ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}
+        CANARY_HEADER=${canaryHeader} python3 tests/business-smoke/run.py ${svc} ${params.BACKEND_IP}
       """,
-      "CANARY_HEADER=${canaryHeader} ./tests/business-smoke/run.sh ${svc} ${params.BACKEND_IP}"
+      "CANARY_HEADER=${canaryHeader} python3 tests/business-smoke/run.py ${svc} ${params.BACKEND_IP}"
     )
   }
 }
@@ -365,15 +379,33 @@ def runRouteSmokeSteps() {
     env.EFFECTIVE_EXECUTION_MODE,
     params.DEV_KUBE_CONTEXT,
     params.DEV_TEST_NAMESPACE,
-    'alpine:3.20',
+    'python:3.11-slim',
     """
-      apk add --no-cache curl git >/dev/null
+      pip install requests >/dev/null 2>&1
       git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
       cd /tmp/go-micro
-      chmod +x tests/*/run.sh
-      ./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${env.EFFECTIVE_ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
+      python3 tests/route-smoke-test/run.py ${params.TARGET_HOST} ${env.EFFECTIVE_ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
     """,
-    "./tests/route-smoke-test/run.sh ${params.TARGET_HOST} ${env.EFFECTIVE_ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
+    "python3 tests/route-smoke-test/run.py ${params.TARGET_HOST} ${env.EFFECTIVE_ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
+  )
+}
+
+def runK8sNodeCheckSteps() {
+  runWithMode(
+    env.EFFECTIVE_EXECUTION_MODE,
+    params.DEV_KUBE_CONTEXT,
+    params.DEV_TEST_NAMESPACE,
+    'python:3.11-slim',
+    """
+      pip install requests >/dev/null 2>&1
+      git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
+      cd /tmp/go-micro
+      python3 tests/k8s-node-check/run.py
+    """,
+    """
+      pip3 install requests >/dev/null 2>&1 || true
+      python3 tests/k8s-node-check/run.py
+    """
   )
 }
 

@@ -24,7 +24,7 @@ WORKDIR /app
 COPY --from=builder /notification-service .
 
 # Expose port
-EXPOSE 8085
+EXPOSE 8083
 
 # Run the application
 CMD ["./notification-service"]
