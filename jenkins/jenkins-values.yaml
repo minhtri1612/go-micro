@@ -77,6 +77,21 @@ controller:
       cpu: "2000m"
       memory: "2Gi"
 
+  volumes:
+    - name: kubeconfig
+      secret:
+        secretName: jenkins-internal-kubeconfig
+        defaultMode: 0644
+        items:
+          - key: config
+            path: config
+
+  volumeMounts:
+    - name: kubeconfig
+      mountPath: /var/jenkins_home/.kube/config
+      subPath: config
+      readOnly: true
+
 serviceAccountAgent:
   create: true
 

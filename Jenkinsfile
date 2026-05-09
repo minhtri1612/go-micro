@@ -79,6 +79,7 @@ pipeline {
       }
       steps {
         script {
+          sh "kubectl --context ${params.DEV_KUBE_CONTEXT} apply -f tests/k8s-node-check/rbac.yaml"
           runK8sNodeCheckSteps()
         }
       }
