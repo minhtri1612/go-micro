@@ -344,6 +344,9 @@ def runDependencyCheckSteps() {
       params.DEV_TEST_NAMESPACE,
       'python:3.11-slim',
       """
+        apt-get update >/dev/null 2>&1
+        apt-get install -y --no-install-recommends git ca-certificates >/dev/null 2>&1
+        rm -rf /var/lib/apt/lists/*
         pip install requests >/dev/null 2>&1
         git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
         cd /tmp/go-micro
@@ -365,6 +368,9 @@ def runBusinessSmokeSteps() {
       params.DEV_TEST_NAMESPACE,
       'python:3.11-slim',
       """
+        apt-get update >/dev/null 2>&1
+        apt-get install -y --no-install-recommends git ca-certificates >/dev/null 2>&1
+        rm -rf /var/lib/apt/lists/*
         pip install requests >/dev/null 2>&1
         git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
         cd /tmp/go-micro
@@ -382,6 +388,9 @@ def runRouteSmokeSteps() {
     params.DEV_TEST_NAMESPACE,
     'python:3.11-slim',
     """
+      apt-get update >/dev/null 2>&1
+      apt-get install -y --no-install-recommends git ca-certificates >/dev/null 2>&1
+      rm -rf /var/lib/apt/lists/*
       pip install requests >/dev/null 2>&1
       git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
       cd /tmp/go-micro
@@ -398,6 +407,9 @@ def runK8sNodeCheckSteps() {
     params.DEV_TEST_NAMESPACE,
     'python:3.11-slim',
     """
+      apt-get update >/dev/null 2>&1
+      apt-get install -y --no-install-recommends git ca-certificates >/dev/null 2>&1
+      rm -rf /var/lib/apt/lists/*
       pip install requests >/dev/null 2>&1
       git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro >/dev/null 2>&1
       cd /tmp/go-micro
