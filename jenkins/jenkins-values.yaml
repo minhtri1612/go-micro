@@ -77,6 +77,13 @@ controller:
       cpu: "2000m"
       memory: "2Gi"
 
+serviceAccountAgent:
+  create: true
+
+rbac:
+  create: true
+
+persistence:
   volumes:
     - name: kubeconfig
       secret:
@@ -85,15 +92,8 @@ controller:
         items:
           - key: config
             path: config
-
-  volumeMounts:
+  mounts:
     - name: kubeconfig
       mountPath: /var/jenkins_home/.kube/config
       subPath: config
       readOnly: true
-
-serviceAccountAgent:
-  create: true
-
-rbac:
-  create: true
