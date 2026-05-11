@@ -1,27 +1,27 @@
-# Kind Setup (go-micro)
+# Kind Setup (go-micro) — **tùy chọn (lab)**
+
+**Mặc định triển khai thật:** RKE2 trên EC2 + ALB/NLB Terraform (`terraform/README.md`). File này chỉ cho lab Kind local; script ClusterMesh yêu cầu `HUB_CTX` / `CTX_*` / `SPOKE_CONTEXTS` (không còn mặc định `kind-*`).
 
 Chạy theo đúng thứ tự bên dưới để recreate lab sau reboot, theo chuẩn GitOps (Argo CD là source of truth).
 
 ## 0) Preconditions
 
 - Repo: `~/Downloads/go-micro`
-- Contexts dùng: `kind-management`, `kind-dev`, `kind-staging`, `kind-prod`
+- Contexts: `kind-management`, `kind-dev`, `kind-prod`
 - API host ports:
   - management: `127.0.0.1:33443`
   - dev: `127.0.0.1:30443`
-  - staging: `127.0.0.1:32443`
   - prod: `127.0.0.1:31443`
 
 ---
 
-## 1) Recreate 4 clusters
+## 1) Recreate 3 clusters (management + dev + prod)
 
 ```bash
 cd ~/Downloads/go-micro
 
 kind delete cluster --name management || true
 kind delete cluster --name dev || true
-kind delete cluster --name staging || true
 kind delete cluster --name prod || true
 
 kind create cluster --name management --config kind/management-kind-config.yaml
@@ -32,8 +32,8 @@ helm repo add cilium https://helm.cilium.io 2>/dev/null || true
 helm repo update
 # Bắt buộc dùng cả 2 file: bootstrap override 2 thứ chưa có lúc này:
 # 1) ServiceMonitor CRD chưa có (Prometheus Operator chưa cài) → nếu không tắt, Helm lỗi "no matches for kind ServiceMonitor"
-# 2) clustermesh-apiserver service type NodePort thay vì LoadBalancer (MetalLB chưa cài) → nếu không override, Helm --wait treo chờ EXTERNAL-IP mãi
-# Sau khi Argo sync monitoring (05) + metallb-management (18) + cilium-management, ArgoCD tự dùng cilium-values-management.yaml (ServiceMonitor bật, LoadBalancer + MetalLB IP tĩnh).
+# 2) clustermesh-apiserver: trên lab không CCM dùng NodePort (cilium-values-management-bootstrap); trên AWS dùng LoadBalancer (NLB) từ CCM.
+# Sau khi Argo sync monitoring (05) + cilium-management, ArgoCD dùng cilium-values-management.yaml đầy đủ (ServiceMonitor bật, LoadBalancer cloud).
 # → Đây là cách phòng ngừa deadlock bootstrap (node NotReady + monitoring Pending chờ nhau), không cần patch tay sau.
 helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
   --version 1.19.2 \
@@ -42,11 +42,9 @@ helm upgrade --install cilium cilium/cilium -n kube-system --create-namespace \
   --wait --timeout 10m
 
 kind create cluster --name dev --config kind/dev-kind-config.yaml
-kind create cluster --name staging --config kind/staging-kind-config.yaml
 kind create cluster --name prod --config kind/prod-kind-config.yaml
 
 kubectl config set-cluster kind-dev --server=https://127.0.0.1:30443
-kubectl config set-cluster kind-staging --server=https://127.0.0.1:32443
 kubectl config set-cluster kind-prod --server=https://127.0.0.1:31443
 ```
 
@@ -88,7 +86,7 @@ argocd --grpc-web account get-user-info
 
 ### 2.1) Jenkins (management, tuỳ chọn)
 
-Application: `argocd/bootstrap/22-jenkins-mgmt.yaml` → Service **`jenkins-management`** (không phải `jenkins`). Chưa có MetalLB thì `EXTERNAL-IP` trống là **bình thường** — dùng port-forward.
+Application: `argocd/bootstrap/22-jenkins-mgmt.yaml` → Service **`jenkins-management`** (không phải `jenkins`). Chưa có cloud LB / chưa sync thì `EXTERNAL-IP` trống là **bình thường** — dùng port-forward.
 
 **Chỉ để mở UI trên laptop (đừng nhầm cổng):**
 
@@ -183,7 +181,6 @@ Sau khi cài:
 - Vào app -> bấm resource `Rollout` (icon `R`) -> sẽ có tab **Rollout**.
 - Có thể soi `%` tại:
   - `status.currentWeight` (Rollout),
-  - hoặc `TraefikService` weighted services (`stable/canary`).
 
 ### 2.3) Jenkins external quality gate (manual Promote/Rollback)
 
@@ -210,21 +207,18 @@ ROLLOUT_SERVICE=<service cụ thể, ví dụ product>   # tránh để auto khi
 
 ---
 
-## 3) Register dev/staging/prod clusters to Argo CD
+## 3) Register dev/prod clusters to Argo CD
 
 ```bash
 kubectl --context kind-dev apply -f kind/dev-argocd-manager.yaml
-kubectl --context kind-staging apply -f kind/staging-argocd-manager.yaml
 kubectl --context kind-prod apply -f kind/prod-argocd-manager.yaml
 sleep 5
 
 DEV_TOKEN=$(kubectl --context kind-dev get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
-STAGING_TOKEN=$(kubectl --context kind-staging get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
 PROD_TOKEN=$(kubectl --context kind-prod get secret argocd-manager-long-lived-token -n kube-system -o jsonpath='{.data.token}' | base64 -d)
 
 kubectl config use-context kind-management
 DEV_IP=$(docker inspect dev-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
-STAGING_IP=$(docker inspect staging-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
 PROD_IP=$(docker inspect prod-control-plane --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
 
 kubectl create secret generic cluster-dev -n argocd \
@@ -233,13 +227,6 @@ kubectl create secret generic cluster-dev -n argocd \
   --from-literal=config="{\"bearerToken\":\"$DEV_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}" \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl label secret cluster-dev -n argocd argocd.argoproj.io/secret-type=cluster --overwrite
-
-kubectl create secret generic cluster-staging -n argocd \
-  --from-literal=name=staging \
-  --from-literal=server=https://$STAGING_IP:6443 \
-  --from-literal=config="{\"bearerToken\":\"$STAGING_TOKEN\",\"tlsClientConfig\":{\"insecure\":true}}" \
-  --dry-run=client -o yaml | kubectl apply -f -
-kubectl label secret cluster-staging -n argocd argocd.argoproj.io/secret-type=cluster --overwrite
 
 kubectl create secret generic cluster-prod -n argocd \
   --from-literal=name=prod \
@@ -260,9 +247,8 @@ cd ~/Downloads/go-micro
 # repos
 argocd repo add https://github.com/minhtri1612/go-micro.git || true
 argocd repo add https://argoproj.github.io/argo-helm --type helm --name argo-helm || true
-argocd repo add https://metallb.github.io/metallb --type helm --name metallb || true
 argocd repo add https://helm.cilium.io/ --type helm --name cilium || true
-argocd repo add https://helm.traefik.io/traefik --type helm --name traefik || true
+argocd repo add oci://docker.io/envoyproxy/gateway-helm --name envoy-gateway || true
 argocd repo add https://charts.jenkins.io --type helm --name jenkins || true
 
 # projects first
@@ -278,95 +264,56 @@ argocd --grpc-web app wait monitoring-management --health --sync --timeout 300
 
 # workload monitoring
 kubectl apply -f argocd/bootstrap/06-monitoring-dev.yaml
-kubectl apply -f argocd/bootstrap/07-monitoring-staging.yaml
 kubectl apply -f argocd/bootstrap/08-monitoring-prod.yaml
 argocd --grpc-web app terminate-op monitoring-dev || true
-argocd --grpc-web app terminate-op monitoring-staging || true
 argocd --grpc-web app terminate-op monitoring-prod || true
 argocd --grpc-web app sync monitoring-dev
-argocd --grpc-web app sync monitoring-staging
 argocd --grpc-web app sync monitoring-prod
-# Khong wait monitoring workload o day: monitoring-dev/staging/prod can node Ready (co CNI) moi
+# Khong wait monitoring workload o day: monitoring-dev/prod can node Ready (co CNI) moi
 # schedule duoc pod, nhung node chua Ready vi Cilium chua len. Đây là điểm cực kỳ dễ gây DEADLOCK.
-
-> [!IMPORTANT]
-> **NẾU GẶP LỖI:** Node `NotReady` + Monitoring `Pending` + Cilium sync fail (thiếu ServiceMonitor CRD)
-> Hãy chạy ngay block lệnh dưới đây để phá deadlock (đã test thành công):
-> ```bash
-> # 1. Patch tắt ServiceMonitor để Cilium không đòi CRD nữa
- for env in dev staging prod; do
-   kubectl --context kind-management -n argocd patch application cilium-$env --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
- done
-> # 2. Sync Cilium trước để node lên Ready
- argocd --grpc-web app sync cilium-dev cilium-staging cilium-prod --grpc-web
- argocd --grpc-web app wait cilium-dev cilium-staging cilium-prod --health --timeout 600 --grpc-web
-> # 3. Bây giờ mới sync Monitoring
- argocd --grpc-web app sync monitoring-dev monitoring-staging monitoring-prod --grpc-web
-> ```
 
 # cilium workload
 
 # cilium workload
 kubectl apply -f argocd/bootstrap/09-cilium-dev.yaml
-kubectl apply -f argocd/bootstrap/10-cilium-staging.yaml
 kubectl apply -f argocd/bootstrap/11-cilium-prod.yaml
 sleep 3
 argocd --grpc-web app terminate-op cilium-dev || true
-argocd --grpc-web app terminate-op cilium-staging || true
 argocd --grpc-web app terminate-op cilium-prod || true
 argocd --grpc-web app sync cilium-dev
-argocd --grpc-web app sync cilium-staging
 argocd --grpc-web app sync cilium-prod
 
 # cilium management
 kubectl apply -f argocd/bootstrap/18-cilium-management.yaml
 argocd --grpc-web app sync cilium-management
-
-# metallb
-kubectl apply -f argocd/bootstrap/15-metallb-dev.yaml
-kubectl apply -f argocd/bootstrap/16-metallb-staging.yaml
-kubectl apply -f argocd/bootstrap/17-metallb-prod.yaml
-kubectl apply -f argocd/bootstrap/18-metallb-management.yaml
-argocd --grpc-web app sync metallb-management
-argocd --grpc-web app sync metallb-dev
-argocd --grpc-web app sync metallb-staging
-argocd --grpc-web app sync metallb-prod
-argocd --grpc-web app wait metallb-management --health --sync --timeout 300
-argocd --grpc-web app wait metallb-dev --health --sync --timeout 300
-argocd --grpc-web app wait metallb-staging --health --sync --timeout 300
-argocd --grpc-web app wait metallb-prod --health --sync --timeout 300
-
-# sau khi MetalLB da cap EXTERNAL-IP cho clustermesh-apiserver, cho cilium on dinh
-argocd --grpc-web app sync cilium-management
 argocd --grpc-web app sync cilium-dev
-argocd --grpc-web app sync cilium-staging
 argocd --grpc-web app sync cilium-prod
+# AWS: đợi EXTERNAL-IP (NLB) clustermesh-apiserver; Kind lab: NodePort / bootstrap overlay.
 argocd --grpc-web app wait cilium-management --health --sync --timeout 300
 argocd --grpc-web app wait cilium-dev --health --sync --timeout 300
-argocd --grpc-web app wait cilium-staging --health --sync --timeout 300
 argocd --grpc-web app wait cilium-prod --health --sync --timeout 300
 
 
-# rollouts + traefik
+# rollouts + Envoy Gateway + gateway-infra
 kubectl apply -f argocd/bootstrap/12-argo-rollouts-dev.yaml
-kubectl apply -f argocd/bootstrap/13-argo-rollouts-staging.yaml
 kubectl apply -f argocd/bootstrap/14-argo-rollouts-prod.yaml
-kubectl apply -f argocd/bootstrap/19-traefik-dev.yaml
-kubectl apply -f argocd/bootstrap/20-traefik-staging.yaml
-kubectl apply -f argocd/bootstrap/21-traefik-prod.yaml
 argocd --grpc-web app sync argo-rollouts-dev
-argocd --grpc-web app sync argo-rollouts-staging
 argocd --grpc-web app sync argo-rollouts-prod
-argocd --grpc-web app sync traefik-dev
-argocd --grpc-web app sync traefik-staging
-argocd --grpc-web app sync traefik-prod
+
+kubectl apply -f argocd/bootstrap/19-envoy-gateway-dev.yaml
+kubectl apply -f argocd/bootstrap/21-envoy-gateway-prod.yaml
+kubectl apply -f argocd/bootstrap/25-gateway-infra-dev.yaml
+kubectl apply -f argocd/bootstrap/27-gateway-infra-prod.yaml
+argocd --grpc-web app sync envoy-gateway-dev
+argocd --grpc-web app sync envoy-gateway-prod
+argocd --grpc-web app sync gateway-infra-dev
+argocd --grpc-web app sync gateway-infra-prod
+
 
 # microservices stacks
 kubectl apply -f argocd/bootstrap/02-dev-microservices-stack.yaml
-kubectl apply -f argocd/bootstrap/03-staging-microservices-stack.yaml
 kubectl apply -f argocd/bootstrap/04-prod-microservices-stack.yaml
 argocd --grpc-web app sync dev-microservices
-argocd --grpc-web app sync staging-microservices
 argocd --grpc-web app sync prod-microservices
 ```
 
@@ -377,10 +324,8 @@ co the patch tam de unblock CNI roi sync lai:
 
 ```bash
 kubectl --context kind-management -n argocd patch application cilium-dev --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
-kubectl --context kind-management -n argocd patch application cilium-staging --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
 kubectl --context kind-management -n argocd patch application cilium-prod --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
 argocd --grpc-web app sync cilium-dev
-argocd --grpc-web app sync cilium-staging
 argocd --grpc-web app sync cilium-prod
 ```
 
@@ -401,22 +346,18 @@ Nguyen nhan:
 Lenh pha deadlock (copy/chay):
 
 ```bash
-# Patch tam tren 3 app Cilium workload de tat ServiceMonitor
+# Patch tam tren 2 app Cilium workload de tat ServiceMonitor
 kubectl --context kind-management -n argocd patch application cilium-dev --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
-kubectl --context kind-management -n argocd patch application cilium-staging --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
 kubectl --context kind-management -n argocd patch application cilium-prod --type json -p='[{"op":"add","path":"/spec/sources/0/helm/valuesObject","value":{"hubble":{"metrics":{"serviceMonitor":{"enabled":false}}},"prometheus":{"serviceMonitor":{"enabled":false}},"operator":{"prometheus":{"serviceMonitor":{"enabled":false}}}}}]'
 
 # Sync Cilium truoc de node len Ready
 argocd --grpc-web app sync cilium-dev
-argocd --grpc-web app sync cilium-staging
 argocd --grpc-web app sync cilium-prod
 argocd --grpc-web app wait cilium-dev --health --sync --timeout 900
-argocd --grpc-web app wait cilium-staging --health --sync --timeout 900
 argocd --grpc-web app wait cilium-prod --health --sync --timeout 900
 
 # Node da Ready thi sync lai monitoring
 argocd --grpc-web app sync monitoring-dev
-argocd --grpc-web app sync monitoring-staging
 argocd --grpc-web app sync monitoring-prod
 ```
 
@@ -435,7 +376,6 @@ kubectl --context kind-management -n monitoring wait --for=condition=Ready pod -
 ./scripts/sync-monitoring-remote-write-url.sh --commit-push
 
 argocd --grpc-web app sync monitoring-dev
-argocd --grpc-web app sync monitoring-staging
 argocd --grpc-web app sync monitoring-prod
 ```
 
@@ -447,9 +387,7 @@ argocd --grpc-web app sync monitoring-prod
 
 Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Secrets Manager (cùng keys như Terraform `modules/secrets`: `POSTGRES_*`, `DATABASE_URL`, `NEXTAUTH_SECRET`).
 
-**Trên từng workload cluster** (`kind-dev`, `kind-staging`, `kind-prod`) - lặp lại với đúng `--context` và file values tương ứng:
 
-1. Cài External Secrets Operator (**một lần trên mỗi** cluster `kind-dev`, `kind-staging`, `kind-prod`):
 
    Config Kind của repo dùng **Kubernetes 1.28** (`kindest/node:v1.28.0`). Chart ESO **>= 0.20.1** kèm CRD có `selectableFields` (chỉ hợp lệ từ K8s ~1.31+) -> `helm install` báo lỗi kiểu `.spec.versions[0].selectableFields: field not declared in schema` và **CRD không được cài** -> apply `ExternalSecret` sẽ lỗi `no matches for kind "ExternalSecret"`.
 
@@ -459,7 +397,6 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    helm repo add external-secrets https://charts.external-secrets.io
    helm repo update
 
-   for ctx in kind-dev kind-staging kind-prod; do
      helm upgrade --install external-secrets external-secrets/external-secrets \
        --version 0.19.2 \
        -n external-secrets --create-namespace \
@@ -470,7 +407,6 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    **Sau `helm install`, bắt buộc chờ pod ESO (webhook) Ready** rồi mới apply `ClusterSecretStore` / `ExternalSecret`. Nếu apply quá sớm, API server gọi validating webhook `external-secrets-webhook` trong khi pod chưa listen -> lỗi `connection refused` / `Internal error occurred: failed calling webhook`.
 
    ```bash
-   for ctx in kind-dev kind-staging kind-prod; do
      kubectl --context "$ctx" -n external-secrets rollout status deployment/external-secrets-webhook --timeout=300s
      kubectl --context "$ctx" -n external-secrets wait --for=condition=Ready pods --all --timeout=300s
    done
@@ -484,7 +420,7 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
 
    **Không bỏ bước này** dù bạn đã tạo secret **trên AWS Secrets Manager** (Terraform / console) từ trước:
 
-  - Secret **trên AWS** (`go-micro/dev/app-credentials`, `go-micro/staging/app-credentials`, `go-micro/prod/app-credentials`) chứa JSON app (`DB_USER`, `DB_PASSWORD`, `PRODUCT_DB_NAME`, `INVENTORY_DB_NAME`, `ORDER_DB_NAME`, `NOTIFICATION_DB_NAME`, `PAYMENT_DB_NAME`) - đích mà **ExternalSecret** đồng bộ vào K8s.
+  - Secret **trên AWS** (`go-micro/dev/app-credentials`, `go-micro/prod/app-credentials`) chứa JSON app (`DB_USER`, `DB_PASSWORD`, `PRODUCT_DB_NAME`, `INVENTORY_DB_NAME`, `ORDER_DB_NAME`, `NOTIFICATION_DB_NAME`, `PAYMENT_DB_NAME`) - đích mà **ExternalSecret** đồng bộ vào K8s.
    - Secret **`aws-credentials` trong cluster** chứa **Access key IAM** để **controller ESO** gọi API AWS (`GetSecretValue`). Không có nó (hoặc không có auth tương đương), ESO không đọc được AWS.
 
    IAM cần `secretsmanager:GetSecretValue` trên prefix secret của project (giống user ESO trong `terraform_secret` hoặc `terraform/modules/iam`).
@@ -494,7 +430,6 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    AWS_ACCESS_KEY_ID='YOUR_AWS_ACCESS_KEY_ID'
    AWS_SECRET_ACCESS_KEY='YOUR_AWS_SECRET_ACCESS_KEY'
 
-   for ctx in kind-dev kind-staging kind-prod; do
      kubectl --context "$ctx" -n external-secrets create secret generic aws-credentials \
        --from-literal=access-key-id="$AWS_ACCESS_KEY_ID" \
        --from-literal=secret-access-key="$AWS_SECRET_ACCESS_KEY" \
@@ -509,7 +444,6 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    TF_AKID="$(terraform output -raw eso_access_key_id)"
    TF_SAK="$(terraform output -raw eso_secret_access_key)"
 
-   for ctx in kind-dev kind-staging kind-prod; do
      kubectl --context "$ctx" -n external-secrets create secret generic aws-credentials \
        --from-literal=access-key-id="$TF_AKID" \
        --from-literal=secret-access-key="$TF_SAK" \
@@ -520,7 +454,6 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
    Force ESO reconcile ngay sau khi update credential:
 
    ```bash
-   for ctx in kind-dev kind-staging kind-prod; do
      ns="microservices-${ctx#kind-}"
      kubectl --context "$ctx" -n "$ns" annotate externalsecret --all force-sync="$(date +%s)" --overwrite
    done
@@ -529,7 +462,6 @@ Dùng khi máy/cluster có egress ra AWS và bạn đã có secret JSON trên Se
 3. Tạo namespace đích đúng của `go-micro`:
 
 ```bash
-for ctx in kind-dev kind-staging kind-prod; do
   env=${ctx#kind-}
   kubectl --context "$ctx" create namespace "databases-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
   kubectl --context "$ctx" create namespace "microservices-$env" --dry-run=client -o yaml | kubectl --context "$ctx" apply -f -
@@ -548,13 +480,6 @@ done
       -f config/env/dev.yaml \
       | kubectl --context kind-dev apply -f -
 
-    # STAGING
-    helm template external-secrets external-secrets/applications \
-      -f external-secrets/applications/values.yaml \
-      -f config/base/config.yaml \
-      -f config/env/staging.yaml \
-      | kubectl --context kind-staging apply -f -
-
     # PROD
     helm template external-secrets external-secrets/applications \
       -f external-secrets/applications/values.yaml \
@@ -567,10 +492,8 @@ done
 
    ```bash
    # Verify AWS secret path từ file config của repo
-   rg "remoteKey:" config/env/dev.yaml config/env/staging.yaml config/env/prod.yaml
    # expected:
    # go-micro/dev/app-credentials
-   # go-micro/staging/app-credentials
    # go-micro/prod/app-credentials
 
    # Verify ExternalSecret đã render đúng remote key
@@ -583,7 +506,6 @@ done
 
 ```bash
 kubectl --context kind-dev get externalsecret,secret -n microservices-dev
-kubectl --context kind-staging get externalsecret,secret -n microservices-staging
 kubectl --context kind-prod get externalsecret,secret -n microservices-prod
 ```
 
@@ -601,12 +523,10 @@ argocd proj list
 argocd app list
 
 kubectl --context kind-dev -n kube-system get pods -l k8s-app=cilium
-kubectl --context kind-staging -n kube-system get pods -l k8s-app=cilium
 kubectl --context kind-prod -n kube-system get pods -l k8s-app=cilium
 
 kubectl --context kind-management -n monitoring get pods
 kubectl --context kind-dev -n external-secrets get pods
-kubectl --context kind-staging -n external-secrets get pods
 kubectl --context kind-prod -n external-secrets get pods
 ```
 
@@ -620,7 +540,6 @@ kubectl --context kind-prod -n external-secrets get pods
 - Kiem tra that bang:
 
 ```bash
-for ctx in kind-management kind-dev kind-staging kind-prod; do
   echo "=== $ctx ==="
   cilium clustermesh status --context "$ctx"
 done
@@ -628,25 +547,35 @@ done
 
 ### 8.2 Thu tu on dinh de tranh race: sync → script → verify
 
+**Hub `clustermesh.config.clusters` (IP spoke trên management):** tren AWS khong hardcode trong Git lau dai. Sau khi moi spoke co `Service/clustermesh-apiserver` type LoadBalancer va da co IP/hostname:
+
+```bash
+export CTX_DEV=kind-dev CTX_PROD=kind-prod   # cloud: rke2-dev, rke2-prod, ...
+./scripts/sync-clustermesh-hub-spoke-ips.sh --print-only
+./scripts/sync-clustermesh-hub-spoke-ips.sh
+# roi: git commit + argocd app sync cilium-management
+```
+
+Kind lab (NodePort / khong ingress LB): dat `CLUSTERMESH_SPOKE_IP_DEV` / `CLUSTERMESH_SPOKE_IP_PROD` thay cho doc IP trong Git.
+
 Dung thu tu nay de giam toi da race condition (Argo reconcile vs runtime cert patch):
 
 ```bash
 # 1) Sync Cilium apps truoc (dua runtime ve dung Git)
 argocd app sync cilium-management --grpc-web
 argocd app sync cilium-dev --grpc-web
-argocd app sync cilium-staging --grpc-web
 argocd app sync cilium-prod --grpc-web
 argocd app wait cilium-management --health --sync --timeout 600 --grpc-web
 argocd app wait cilium-dev --health --sync --timeout 600 --grpc-web
-argocd app wait cilium-staging --health --sync --timeout 600 --grpc-web
 argocd app wait cilium-prod --health --sync --timeout 600 --grpc-web
 
 # 2) Chay recovery script (CA bundle + restart)
 cd ~/Downloads/go-micro
+export HUB_CTX=kind-management
+export SPOKE_CONTEXTS="kind-dev kind-prod"
 ./scripts/kind-clustermesh-sync-spoke-from-hub.sh
 
 # 3) Verify
-for ctx in kind-management kind-dev kind-staging kind-prod; do
   echo "=== $ctx ==="
   cilium clustermesh status --context "$ctx"
 done
@@ -660,7 +589,7 @@ Thuong la do chay script khong dung bo cua repo hien tai, hoac chay script nhung
 Voi `go-micro`, dung dung bo script sau:
 
 ```bash
-chmod +x scripts/kind-clustermesh-peer-ip.sh scripts/kind-clustermesh-sync-spoke-from-hub.sh
+chmod +x scripts/kind-clustermesh-peer-ip.sh scripts/kind-clustermesh-sync-spoke-from-hub.sh scripts/sync-clustermesh-hub-spoke-ips.sh
 ```
 
 Luu y: script nay dong bo CA/cert, nhung neu endpoint peer trong secret `cilium-clustermesh` bi drift thi can them buoc fix endpoint (xem `8.8`).
@@ -672,7 +601,6 @@ Chi can sync khi ban da sua Git va khong co cert drift:
 ```bash
 argocd app sync cilium-management --grpc-web
 argocd app sync cilium-dev --grpc-web
-argocd app sync cilium-staging --grpc-web
 argocd app sync cilium-prod --grpc-web
 ```
 
@@ -686,11 +614,12 @@ Chay recovery neu thay dau hieu:
 
 ```bash
 cd ~/Downloads/go-micro
+export HUB_CTX=kind-management
+export SPOKE_CONTEXTS="kind-dev kind-prod"
 ./scripts/kind-clustermesh-sync-spoke-from-hub.sh
 
 argocd app sync cilium-management --grpc-web
 argocd app sync cilium-dev --grpc-web
-argocd app sync cilium-staging --grpc-web
 argocd app sync cilium-prod --grpc-web
 ```
 
@@ -770,7 +699,6 @@ Nguyen nhan goc hay gap:
 Fix runtime ngay (khong can hardcode cert/key vao Git):
 
 ```bash
-for ctx in kind-management kind-dev kind-staging kind-prod; do
   echo "=== $ctx ==="
   keys=$(kubectl --context "$ctx" -n kube-system get secret cilium-kvstoremesh -o go-template='{{range $k,$v := .data}}{{printf "%s\n" $k}}{{end}}')
   while IFS= read -r k; do
@@ -780,7 +708,6 @@ for ctx in kind-management kind-dev kind-staging kind-prod; do
   done <<< "$keys"
 done
 
-for ctx in kind-management kind-dev kind-staging kind-prod; do
   kubectl --context "$ctx" -n kube-system rollout restart ds/cilium
   kubectl --context "$ctx" -n kube-system rollout status ds/cilium --timeout=300s
 done
@@ -789,7 +716,6 @@ done
 Verify lai:
 
 ```bash
-for ctx in kind-management kind-dev kind-staging kind-prod; do
   echo "=== $ctx ==="
   cilium clustermesh status --context "$ctx"
 done
@@ -797,8 +723,8 @@ done
 
 Ky vong ket qua:
 
-- management: `3/3 configured, 3/3 connected`
-- dev/staging/prod: `1/1 configured, 1/1 connected`
+- management: `2/2 configured, 2/2 connected`
+- dev/prod: `1/1 configured, 1/1 connected`
 
 ---
 ```bash

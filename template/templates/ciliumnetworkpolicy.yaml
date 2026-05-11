@@ -1,3 +1,4 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- $cs := .Values.currentService | default "" }}
 {{- $f := .Values.ciliumNetworkPolicy.services | default list }}
 {{- $allow := or (eq (len $f) 0) (has $cs $f) }}
@@ -84,4 +85,5 @@ spec:
             mode: {{ .Values.ciliumNetworkPolicy.authenticationMode | quote }}
           {{- end }}
   {{- end }}
+{{- end }}
 {{- end }}

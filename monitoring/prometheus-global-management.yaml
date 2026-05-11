@@ -6,7 +6,6 @@ metadata:
   annotations:
     io.cilium/global-service: "true"
     io.cilium/shared-service: "true"
-    metallb.io/loadBalancerIPs: 172.18.255.45
 spec:
   type: LoadBalancer
   ports:

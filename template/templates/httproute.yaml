@@ -1,12 +1,29 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- if and .Values.httpRoute.enabled (ne (.Values.workloadKind | default "deployment" | lower) "statefulset") -}}
 {{- $fullName := include "template.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}
+{{- $wk := .Values.workloadKind | default "deployment" | lower }}
+{{- $cs := .Values.currentService | default "" }}
+{{- $svc := (index .Values $cs) | default dict }}
+{{- $backend := .Values.backend | default dict }}
+{{- $rolloutCfg := deepCopy (.Values.rollout | default dict) }}
+{{- if and (not (hasSuffix "-db" $cs)) (hasKey $backend "rollout") }}
+{{- $rolloutCfg = mergeOverwrite $rolloutCfg ($backend.rollout | default dict) }}
+{{- end }}
+{{- if hasKey $svc "rollout" }}
+{{- $rolloutCfg = mergeOverwrite $rolloutCfg ($svc.rollout | default dict) }}
+{{- end }}
+{{- $strategy := $rolloutCfg.strategy | default "canary" | lower }}
+{{- $rolloutCanary := and (ne $wk "statefulset") ($rolloutCfg.enabled | default false) (eq $strategy "canary") }}
+{{- $stableSvc := $rolloutCfg.canary.stableService | default (include "template.fullname" .) }}
+{{- $canarySvc := $rolloutCfg.canary.canaryService | default (printf "%s-canary" (include "template.fullname" .)) }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: {{ $fullName }}
   labels:
     {{- include "template.labels" . | nindent 4 }}
+    app.kubernetes.io/component: httproute
   {{- with .Values.httpRoute.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -21,6 +38,17 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
+{{- if $rolloutCanary }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ .Values.httpRoute.pathPrefix | default "/" | quote }}
+      backendRefs:
+        - name: {{ $stableSvc }}
+          port: {{ $svcPort }}
+        - name: {{ $canarySvc }}
+          port: {{ $svcPort }}
+{{- else if .Values.httpRoute.rules }}
     {{- range .Values.httpRoute.rules }}
     {{- with .matches }}
     - matches:
@@ -35,4 +63,15 @@ spec:
           port: {{ $svcPort }}
           weight: 1
     {{- end }}
+{{- else }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ .Values.httpRoute.pathPrefix | default "/" | quote }}
+      backendRefs:
+        - name: {{ $fullName }}
+          port: {{ $svcPort }}
+          weight: 1
+{{- end }}
+{{- end }}
 {{- end }}

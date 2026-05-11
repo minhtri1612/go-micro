@@ -1,3 +1,4 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- if eq (.Values.workloadKind | default "deployment" | lower) "statefulset" }}
 {{- $p := .Values.persistence | default dict }}
 apiVersion: apps/v1
@@ -29,4 +30,5 @@ spec:
           requests:
             storage: {{ $p.size | default "10Gi" | quote }}
   {{- end }}
+{{- end }}
 {{- end }}

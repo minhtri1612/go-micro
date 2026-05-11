@@ -1,12 +1,27 @@
 #!/usr/bin/env bash
-# Sync CA bundle cho ClusterMesh mTLS giữa 4 cluster Kind (management + dev/staging/prod).
+# Sync CA bundle cho ClusterMesh mTLS giữa hub (management) và các spoke (dev, prod).
 # Dùng khi recreate cluster / rotate cert làm KVStoreMesh chưa bắt tay đủ.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-HUB_CTX="${HUB_CTX:-kind-management}"
+HUB_CTX="${HUB_CTX:-}"
 HUB_NS="${HUB_NS:-kube-system}"
-SPOKE_CTXS=("kind-dev" "kind-staging" "kind-prod")
+
+if [[ -z "${HUB_CTX}" ]]; then
+  echo "Thieu HUB_CTX (kubectl context cluster management/hub)." >&2
+  echo "  Vi du: export HUB_CTX=rke2-management" >&2
+  echo "  Lab Kind: export HUB_CTX=kind-management" >&2
+  exit 1
+fi
+
+if [[ -z "${SPOKE_CONTEXTS:-}" ]]; then
+  echo "Thieu SPOKE_CONTEXTS — danh sach context spoke, cach nhau boi space." >&2
+  echo "  Vi du: export SPOKE_CONTEXTS='rke2-dev rke2-prod'" >&2
+  echo "  Lab Kind: export SPOKE_CONTEXTS='kind-dev kind-prod'" >&2
+  exit 1
+fi
+
+read -r -a SPOKE_CTXS <<< "${SPOKE_CONTEXTS}"
 ALL_CTXS=("${HUB_CTX}" "${SPOKE_CTXS[@]}")
 PEER_SCRIPT="${ROOT}/scripts/kind-clustermesh-peer-ip.sh"
 
@@ -15,8 +30,8 @@ if [[ ! -f "${PEER_SCRIPT}" ]]; then
   exit 1
 fi
 
-echo "==> Update management peer endpoint file"
-bash "${PEER_SCRIPT}"
+echo "==> Update management peer endpoint file (can HUB_CTX / HUB_LB_IP)"
+HUB_CTX="${HUB_CTX}" bash "${PEER_SCRIPT}"
 
 echo "==> Gather cilium-ca from all contexts"
 CA_ALL="$(mktemp)"
@@ -50,5 +65,5 @@ for ctx in "${ALL_CTXS[@]}"; do
 done
 
 echo "Done."
-echo "Next: argocd app sync cilium-management cilium-dev cilium-staging cilium-prod"
-echo "Verify: for ctx in kind-management kind-dev kind-staging kind-prod; do cilium clustermesh status --context \$ctx; done"
+echo "Next: argocd app sync cilium-management cilium-dev cilium-prod"
+echo "Verify: for ctx in ${HUB_CTX} ${SPOKE_CONTEXTS}; do cilium clustermesh status --context \$ctx; done"

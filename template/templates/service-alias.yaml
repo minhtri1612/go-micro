@@ -1,3 +1,4 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- $fullName := include "template.fullname" . }}
 {{- $cs := .Values.currentService | default "" }}
 {{- $svc := (index .Values $cs) | default dict }}
@@ -13,4 +14,5 @@ metadata:
 spec:
   type: ExternalName
   externalName: {{ $fullName }}.{{ $.Release.Namespace }}.svc.cluster.local
+{{- end }}
 {{- end }}

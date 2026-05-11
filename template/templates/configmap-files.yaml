@@ -1,3 +1,4 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- $cs := .Values.currentService | default "" }}
 {{- $svc := dict }}
 {{- if $cs }}
@@ -16,5 +17,6 @@ data:
 {{- range $f := $files }}
   {{ $f.name }}: |
 {{ $f.value | nindent 4 }}
+{{- end }}
 {{- end }}
 {{- end }}

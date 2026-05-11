@@ -24,5 +24,3 @@ clustermesh:
   apiserver:
     service:
       type: LoadBalancer
-      annotations:
-        metallb.universe.tf/loadBalancerIPs: "172.18.255.11"

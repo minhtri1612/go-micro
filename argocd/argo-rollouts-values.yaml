@@ -1,6 +1,31 @@
-# Traefik routing uses native Argo Rollouts integration (trafficRouting.traefik).
-# Configure Traefik CRD API group/version explicitly for rollouts controller.
+# Canary traffic splitting via Kubernetes Gateway API (HTTPRoute), not Traefik.
+# Docs: https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi
+providerRBAC:
+  providers:
+    traefik: false
+    gatewayAPI: true
+
 controller:
-  extraArgs:
-    - --traefik-api-group=traefik.io
-    - --traefik-api-version=traefik.io/v1alpha1
+  extraArgs: []
+
+  initContainers:
+    - name: copy-gwapi-plugin
+      image: ghcr.io/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi:v0.5.0
+      command: ["/bin/sh", "-c"]
+      args:
+        - cp /bin/rollouts-plugin-trafficrouter-gatewayapi /plugins/rollouts-plugin-trafficrouter-gatewayapi && chmod +x /plugins/rollouts-plugin-trafficrouter-gatewayapi
+      volumeMounts:
+        - name: gwapi-plugin
+          mountPath: /plugins
+
+  volumes:
+    - name: gwapi-plugin
+      emptyDir: {}
+
+  volumeMounts:
+    - name: gwapi-plugin
+      mountPath: /plugins
+
+  trafficRouterPlugins:
+    - name: argoproj-labs/gatewayAPI
+      location: "file:///plugins/rollouts-plugin-trafficrouter-gatewayapi"

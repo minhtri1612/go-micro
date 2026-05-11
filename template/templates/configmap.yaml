@@ -1,3 +1,4 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- if and .Values.runtimeConfig.enabled .Values.runtimeConfig.data }}
 apiVersion: v1
 kind: ConfigMap
@@ -8,4 +9,5 @@ metadata:
 data:
   {{ .Values.runtimeConfig.fileName | default "app.yaml" }}: |
     {{- toYaml .Values.runtimeConfig.data | nindent 4 }}
+{{- end }}
 {{- end }}

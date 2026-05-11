@@ -8,7 +8,7 @@
 #
 # IP mặc định script lấy từ: docker inspect management-control-plane (đổi tên bằng MGMT_CONTROL_PLANE_CONTAINER).
 # Port mặc định: 32090 (monitoring-mgmt.yaml NodePort → prometheus 9090).
-# MetalLB không bắt buộc cho luồng này: traffic là workload → management qua Docker bridge, không cần LB trên spoke.
+# Không cần in-cluster MetalLB cho remote_write: traffic workload → management qua mạng nội bộ/VPC (hoặc Docker bridge trên Kind).
 #
 # Lưu ý mạng Kind: pod trên kind-dev có thể KHÔNG route tới IP container management-control-plane
 # (mỗi cluster thường một Docker network riêng) → curl từ `kubectl run` trên dev có thể treo tới timeout.
@@ -19,8 +19,8 @@
 # Trong container management:
 #   docker exec management-control-plane curl -sS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:32090/-/ready"
 #
-# Phân tách env trong Grafana: dùng label từ monitoring-workload-labels-{dev,staging,prod}.yaml
-#   ví dụ: up{cluster="dev"}, kube_pod_*{cluster="staging"}
+# Phân tách env trong Grafana: dùng label từ monitoring-workload-labels-{dev,prod}.yaml
+#   ví dụ: up{cluster="dev"}, kube_pod_*{cluster="prod"}
 
 fullnameOverride: kps-wl
 grafana:

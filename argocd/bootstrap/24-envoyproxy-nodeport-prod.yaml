@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: envoyproxy-nodeport-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: prod
+  source:
+    repoURL: https://github.com/minhtri1612/go-micro.git
+    path: gateway
+    targetRevision: main
+    directory:
+      include: envoyproxy-go-micro-nodeport.yaml
+  destination:
+    name: prod
+    namespace: envoy-gateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

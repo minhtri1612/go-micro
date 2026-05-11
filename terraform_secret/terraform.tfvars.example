@@ -1,11 +1,11 @@
 aws_region   = "ap-southeast-2"
 project_name = "go-micro"
 
-environments = ["dev", "staging", "prod"]
+environments = ["dev", "prod"]
 db_password = "canh177"
 
 # Copy to terraform.tfvars (gitignored). Use a real key from https://dashboard.stripe.com/apikeys
-# One key is stored per AWS secret (dev / staging / prod each get the same value unless you change the module later).
+# One key is stored per AWS secret (dev và prod mỗi env một secret trừ khi bạn đổi module).
 stripe_secret_key = "sk_test_REPLACE_ME"
 
 # Optional:

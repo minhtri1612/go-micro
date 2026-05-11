@@ -1,3 +1,4 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- if and (ne (.Values.workloadKind | default "deployment" | lower) "statefulset") (.Values.podMonitor.enabled | default false) }}
 {{- $monRel := printf "monitoring-%s" (.Values.env | default "dev") }}
 apiVersion: monitoring.coreos.com/v1
@@ -16,4 +17,5 @@ spec:
   selector:
     matchLabels:
       {{- include "template.selectorLabels" . | nindent 6 }}
+{{- end }}
 {{- end }}

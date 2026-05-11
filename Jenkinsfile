@@ -22,7 +22,7 @@ pipeline {
       choices: ['full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'],
       description: '`full` = Prepare + mọi stage + Promote (nếu bật). `*-only` = chỉ Prepare + đúng một nhóm test; bỏ qua Promote (không đụng rollout).'
     )
-    string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
+    string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'rke2-dev', description: 'kubectl context cụm dev (RKE2/EKS/...; đặt đúng tên trong Jenkins kubeconfig).')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
     string(name: 'DEV_TEST_SERVICE_ACCOUNT', defaultValue: 'go-micro-test-runner', description: 'ServiceAccount dùng cho pod test (cần có quyền list nodes cho K8s API node check).')
     string(name: 'ROLLOUT_NAMESPACE', defaultValue: 'microservices-dev', description: 'Namespace chứa Argo Rollout cần promote/abort.')
@@ -31,8 +31,8 @@ pipeline {
     booleanParam(name: 'AUTO_ABORT', defaultValue: true, description: 'Tự abort rollout khi pipeline fail hoặc anh nhấn nút Abort.')
     booleanParam(name: 'ENABLE_MANUAL_ROLLOUT_GATE', defaultValue: true, description: 'Hiện bước nút bấm Promote/Rollback trên Jenkins UI sau khi test pass.')
     choice(name: 'ON_FAILURE_MANUAL_ACTION', choices: ['Rollback now', 'Do nothing'], description: 'Khi pipeline fail và AUTO_ABORT=false: chọn hành động mặc định cho bước manual fail gate.')
-    string(name: 'TARGET_HOST', defaultValue: 'dev.go-micro.local', description: 'Host trong URL + header Host cho route smoke (Traefik/Ingress :80).')
-    string(name: 'BACKEND_IP', defaultValue: '172.18.255.10', description: 'IP gateway/Ingress: dependency & business (http://IP:port), route smoke (--resolve), k6 TARGET_URL.')
+    string(name: 'TARGET_HOST', defaultValue: 'dev-go-micro.local', description: 'Header Host + URL route smoke — trên cloud dùng hostname khớp HTTPRoute (vd. DNS trỏ ALB).')
+    string(name: 'BACKEND_IP', defaultValue: '', description: 'Bắt buộc: IP/DNS tới Envoy NodePort hoặc ALB (terraform), ví dụ node IP hoặc public ALB; không để trống.')
     choice(
       name: 'DEPENDENCY_SERVICES',
       choices: ['all', 'product', 'inventory', 'order', 'payment', 'noti'],
@@ -61,6 +61,9 @@ pipeline {
         sh 'kubectl version --client'
         script {
           validateKubeContext(params.DEV_KUBE_CONTEXT)
+          if (!params.BACKEND_IP?.trim()) {
+            error('BACKEND_IP dang de trong: dien IP/DNS toi ALB/NLB hoac node:port (Envoy NodePort sau gateway-infra), khong con mac dinh Kind.')
+          }
           env.RESOLVED_ROLLOUT_SERVICE = resolveRolloutService(params.ROLLOUT_SERVICE, params.DEPENDENCY_SERVICES, params.BUSINESS_SERVICES)
           env.EFFECTIVE_ROUTE_PREFIX = resolveEffectiveRoutePrefix(params.ROUTE_PREFIX, params.DEPENDENCY_SERVICES, params.BUSINESS_SERVICES)
           echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
@@ -440,7 +443,7 @@ def runK6LoadSteps() {
       export const options = { vus: vus, duration: duration, thresholds: { http_req_failed: ['rate<' + errorRate], http_req_duration: ['p(95)<2000'] } };
       function getPrefix(s) { return ({ product:'/api/v1/products', order:'/api/v1/orders', inventory:'/api/v1/inventory', noti:'/api/v1/notifications', payment:'/api/v1/payments', client:'/' }[s] || '/api/v1/products'); }
       function probePath(s) { if (s === 'client') return '/'; if (s === 'order') return '/orders'; return '/health'; }
-      export default function () { const prefix = getPrefix(service); const path = probePath(service); const params = { headers: { Host: 'dev.go-micro.local' } }; const res = http.get('http://' + target + prefix + path, params); check(res, { 'status is 200': (r) => r.status === 200 }); sleep(0.3); }
+      export default function () { const prefix = getPrefix(service); const path = probePath(service); const params = { headers: { Host: 'dev-go-micro.local' } }; const res = http.get('http://' + target + prefix + path, params); check(res, { 'status is 200': (r) => r.status === 200 }); sleep(0.3); }
       EOF
       TARGET_URL=${params.BACKEND_IP} SERVICE_NAME=${params.K6_SERVICE_NAME} VUS=${params.K6_VUS} DURATION=${params.K6_DURATION} ERROR_RATE=${params.K6_ERROR_RATE} k6 run /tmp/k6-script.js
     """,

@@ -54,15 +54,11 @@ useExternalSecrets: true
 workloadKind: rollout
 
 routing:
-  provider: traefik
+  provider: gateway
 
-traefik:
+httpRoute:
   enabled: true
   pathPrefix: /api/v1/inventory
-  stripPrefixes:
-    - /api/v1/inventory
-  ingressRouteForServices:
-    - inventory
 
 rollout:
   enabled: true

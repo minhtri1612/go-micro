@@ -1,3 +1,4 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- $fullName := include "template.fullname" . }}
 {{- $selectors := include "template.selectorLabels" . }}
 {{- if ne (.Values.workloadKind | default "deployment" | lower) "statefulset" }}
@@ -104,4 +105,5 @@ spec:
       name: {{ .Values.service.portName | default "http" }}
   selector:
     {{- $selectors | nindent 4 }}
+{{- end }}
 {{- end }}

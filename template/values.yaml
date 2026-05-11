@@ -85,19 +85,8 @@ ingress:
   #      - chart-example.local
 
 routing:
-  provider: traefik
-
-traefik:
-  enabled: false
-  hostname: chart-example.local
-  entryPoints:
-    - web
-  stableWeight: 90
-  canaryWeight: 10
-  pathPrefix: /
-  stripPrefixes: []
-  # When empty, IngressRoute/TraefikService are not rendered. Set service names to enable (e.g. [api-gateway]).
-  ingressRouteForServices: []
+  # gateway = Kubernetes Gateway API only (HTTPRoute). Traefik CRDs removed from this chart.
+  provider: gateway
 
 rollout:
   enabled: false
@@ -164,43 +153,41 @@ persistence:
 
 env: ""
 
-# -- Expose the service via gateway-api HTTPRoute
-# Requires Gateway API resources and suitable controller installed within the cluster
-# (see: https://gateway-api.sigs.k8s.io/guides/)
+# Dedicated Argo app (argocd/helm/gateway-infra-*.yaml): gatewayInfraOnly=true, gatewayApi.*.create=true — chỉ render GatewayClass + Gateway, không render workload.
+gatewayInfraOnly: false
+
+# Envoy Gateway: class name "eg" + controller gateway.envoyproxy.io/gatewayclass-controller (chart bootstrap 19–21).
+gatewayApi:
+  gatewayClass:
+    create: false
+    name: eg
+    controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    description: ""
+    annotations: {}
+    # parametersRef: (tuỳ chọn) tham EnvoyProxy — xem argocd/helm/gateway-infra-*.yaml
+  gateway:
+    create: false
+    name: go-micro-gateway
+    namespace: ""
+    className: eg
+    annotations: {}
+    addresses: []
+    listeners:
+      - name: http
+        port: 80
+        protocol: HTTP
+        allowedRoutes:
+          namespaces:
+            from: Same
+
+# HTTPRoute parentRefs / hostnames: config/env/<env>.yaml — khớp Gateway ở trên (sectionName = listener name "http").
 httpRoute:
-  # HTTPRoute enabled.
-  enabled: false
-  # HTTPRoute annotations.
+  enabled: true
   annotations: {}
-  # Which Gateways this Route is attached to.
-  parentRefs:
-  - name: gateway
-    sectionName: http
-    # namespace: default
-  # Hostnames matching HTTP header.
-  hostnames:
-  - chart-example.local
-  # List of rules and filters applied.
-  rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /headers
-  #   filters:
-  #   - type: RequestHeaderModifier
-  #     requestHeaderModifier:
-  #       set:
-  #       - name: My-Overwrite-Header
-  #         value: this-is-the-only-value
-  #       remove:
-  #       - User-Agent
-  # - matches:
-  #   - path:
-  #       type: PathPrefix
-  #       value: /echo
-  #     headers:
-  #     - name: version
-  #       value: v2
+  pathPrefix: /
+  parentRefs: []
+  hostnames: []
+  rules: []
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious

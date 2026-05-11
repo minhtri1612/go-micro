@@ -40,7 +40,7 @@ export default function () {
   const path = probePath(service);
   const params = {
     headers: {
-      'Host': 'dev.go-micro.local'
+      'Host': 'dev-go-micro.local'
     }
   };
   let res = http.get(`http://${target}${prefix}${path}`, params);

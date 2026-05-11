@@ -1,0 +1,22 @@
+{{- if .Values.gatewayApi.gateway.create }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gatewayApi.gateway.name }}
+  namespace: {{ .Values.gatewayApi.gateway.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  {{- with .Values.gatewayApi.gateway.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ .Values.gatewayApi.gateway.className }}
+  {{- with .Values.gatewayApi.gateway.addresses }}
+  addresses:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  listeners:
+    {{- toYaml .Values.gatewayApi.gateway.listeners | nindent 4 }}
+{{- end }}

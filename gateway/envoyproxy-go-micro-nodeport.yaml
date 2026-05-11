@@ -1,0 +1,14 @@
+# Envoy Gateway: data plane Service = NodePort để ALB/NLB Terraform forward tới worker (không dùng MetalLB / LB thứ hai từ CCM).
+# GatewayClass `eg` (chart gateway-infra) tham chiếu CR này qua spec.parametersRef.
+# apiVersion khớp Envoy Gateway chart v1.2.x (bootstrap 19/21).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: go-micro-nodeport
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: NodePort

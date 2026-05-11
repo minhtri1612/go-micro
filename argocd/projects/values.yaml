@@ -12,31 +12,10 @@ environments:
       - microservices-dev
       - databases-dev
       - monitoring
-      - metallb-system
       - argo-rollouts
       - kube-system
       - cilium-secrets
-      - traefik
-    clusterResourceWhitelist:
-      - group: ""
-        kind: Namespace
-      - group: "*"
-        kind: "*"
-    namespaceResourceWhitelist:
-      - group: "*"
-        kind: "*"
-
-  - name: staging
-    cluster: staging
-    namespaces:
-      - microservices-staging
-      - databases-staging
-      - monitoring
-      - metallb-system
-      - argo-rollouts
-      - kube-system
-      - cilium-secrets
-      - traefik
+      - envoy-gateway-system
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace
@@ -52,11 +31,10 @@ environments:
       - microservices-prod
       - databases-prod
       - monitoring
-      - metallb-system
       - argo-rollouts
       - kube-system
       - cilium-secrets
-      - traefik
+      - envoy-gateway-system
     clusterResourceWhitelist:
       - group: ""
         kind: Namespace

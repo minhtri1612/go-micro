@@ -1,5 +1,7 @@
 # terraform_secret - AWS Secrets Manager for go-micro
 
+**Cùng schema JSON** với `terraform/modules/secrets` (stack RKE2 per env): một nguồn sự thật cho External Secrets / `config/env/*.yaml`.
+
 This stack creates one JSON secret per environment in AWS Secrets Manager:
 
 `{project_name}/{env}/app-credentials{suffix}`

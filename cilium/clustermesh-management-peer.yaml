@@ -1,8 +1,9 @@
-# AUTO — scripts/kind-clustermesh-peer-ip.sh — endpoint clustermesh-apiserver của management
+# Peer hub — cập nhật bằng: HUB_CTX=<kubectl-context-management> ./scripts/kind-clustermesh-peer-ip.sh
+# 203.0.113.1 = TEST-NET (RFC 5737), không dùng cho traffic thật; Argo sync Cilium spoke cần IP/NLB thật sau script.
 clustermesh:
   config:
     clusters:
       - name: management
         port: 2379
         ips:
-          - 172.18.255.41
+          - 203.0.113.1

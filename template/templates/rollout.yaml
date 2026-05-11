@@ -1,3 +1,4 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- $wk := .Values.workloadKind | default "deployment" | lower }}
 {{- $cs := .Values.currentService | default "" }}
 {{- $svc := (index .Values $cs) | default dict }}
@@ -44,8 +45,10 @@ spec:
       stableService: {{ $stableSvc }}
       canaryService: {{ $canarySvc }}
       trafficRouting:
-        traefik:
-          weightedTraefikServiceName: {{ include "template.fullname" . }}-weighted
+        plugins:
+          "argoproj-labs/gatewayAPI":
+            httpRoute: {{ include "template.fullname" . }}
+            namespace: {{ .Release.Namespace }}
       {{- with $rolloutCfg.canary.maxSurge }}
       maxSurge: {{ . }}
       {{- end }}
@@ -57,4 +60,5 @@ spec:
     {{- end }}
   template:
     {{- include "template.workloadPodSpec" . | nindent 4 }}
+{{- end }}
 {{- end }}

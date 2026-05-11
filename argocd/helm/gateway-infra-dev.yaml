@@ -1,0 +1,37 @@
+# Argo app: path template, releaseName gateway-infra, namespace microservices-dev
+gatewayInfraOnly: true
+nameOverride: gateway-infra
+fullnameOverride: gateway-infra
+currentService: ""
+env: dev
+serviceAccount:
+  create: false
+httpRoute:
+  enabled: false
+rollout:
+  enabled: false
+workloadKind: deployment
+deployment:
+  enabled: false
+useExternalSecrets: false
+autoscaling:
+  enabled: false
+podMonitor:
+  enabled: false
+ciliumNetworkPolicy:
+  enabled: false
+testConnection:
+  enabled: false
+gatewayApi:
+  gatewayClass:
+    create: true
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: go-micro-nodeport
+      namespace: envoy-gateway-system
+  gateway:
+    create: true
+    # namespace = Argo destination namespace
+    className: eg
+    name: go-micro-gateway

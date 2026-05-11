@@ -54,15 +54,11 @@ useExternalSecrets: true
 workloadKind: rollout
 
 routing:
-  provider: traefik
+  provider: gateway
 
-traefik:
+httpRoute:
   enabled: true
   pathPrefix: /api/v1/notifications
-  stripPrefixes:
-    - /api/v1/notifications
-  ingressRouteForServices:
-    - noti
 
 rollout:
   enabled: true

@@ -65,15 +65,11 @@ spec:
       kind: CiliumNetworkPolicy
       jqPathExpressions:
         - .status
-    - group: traefik.io
-      kind: IngressRoute
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
       jqPathExpressions:
         - .status
-    - group: traefik.io
-      kind: TraefikService
-      jqPathExpressions:
-        - .status
-        - .spec.weighted.services[].weight
+        - select(.metadata.labels["rollouts.argoproj.io/gatewayapi-canary"] == "in-progress") | .spec.rules
     - group: networking.k8s.io
       kind: Ingress
       jqPathExpressions:

@@ -1,0 +1,22 @@
+{{- if .Values.gatewayApi.gatewayClass.create }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gatewayApi.gatewayClass.name }}
+  labels:
+    {{- include "template.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway-class
+  {{- with .Values.gatewayApi.gatewayClass.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  controllerName: {{ .Values.gatewayApi.gatewayClass.controllerName | quote }}
+  {{- with .Values.gatewayApi.gatewayClass.description }}
+  description: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.gatewayApi.gatewayClass.parametersRef }}
+  parametersRef:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

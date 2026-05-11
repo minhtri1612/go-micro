@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: envoy-gateway-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: dev
+  source:
+    repoURL: oci://docker.io/envoyproxy/gateway-helm
+    targetRevision: v1.2.2
+    helm:
+      releaseName: envoy-gateway
+      values: |
+        config:
+          envoyGateway:
+            logging:
+              level: info
+  destination:
+    name: dev
+    namespace: envoy-gateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

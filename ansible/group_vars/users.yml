@@ -1,0 +1,31 @@
+# --- VPN users: mỗi user có name + IP tĩnh (CCD) + Role ---
+network_ranges:
+  management: "10.0.0.0/16"
+  dev: "10.1.0.0/16"
+  prod: "10.2.0.0/16"
+
+vpn_users:
+  - { name: "minhtri", ip: "10.8.0.50", role: "dev" }
+  - { name: "sep_tong", ip: "10.8.0.51", role: "admin" }
+
+# --- VPN policy: cipher, auth, keepalive, DNS, full/split tunnel ---
+vpn_policy:
+  cipher: "AES-256-GCM"
+  auth: "SHA256"
+  keepalive: "10 120"
+  # DNS push cho client (để trỏ qua VPN khi resolve). Để [] nếu không push DNS.
+  push_dns: []
+  # true = full tunnel (mọi traffic qua VPN); false = chỉ route theo vpn_target qua VPN
+  redirect_gateway: false
+  verb: "3"
+
+# --- NAT: false = traffic giữ nguồn 10.8.0.x (SG cho phép 10.8.0.0/24). true = SNAT qua IP OpenVPN (cần SG cho openvpn_sg).
+vpn_nat: true
+
+# --- VPN target: các mạng đích push cho client (client chỉ route những CIDR này qua VPN) ---
+vpn_target:
+  - { cidr: "10.0.0.0", mask: "255.255.0.0" }   # VPC Management
+  - { cidr: "10.1.0.0", mask: "255.255.0.0" }   # VPC Dev
+  - { cidr: "10.2.0.0", mask: "255.255.0.0" }   # VPC Prod
+  # Thêm nếu cần, ví dụ:
+  # - { cidr: "192.168.1.0", mask: "255.255.255.0" }

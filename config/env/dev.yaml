@@ -2,14 +2,18 @@ env: dev
 projectName: go-micro
 
 routing:
-  provider: traefik
+  provider: gateway
 
-traefik:
-  enabled: true
-  hostname: dev.go-micro.local
-  stableWeight: 90
-  canaryWeight: 10
-  darkLaunch: true   # QA/Dev dùng header X-Canary: true để test canary trực tiếp
+# GatewayClass + Gateway: cùng chart `template` (app Argo `gateway-infra-*`, argocd/helm/gateway-infra-*.yaml)
+httpRoute:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: go-micro-gateway
+      namespace: microservices-dev
+      sectionName: http
+  hostnames:
+    - dev-go-micro.local
 
 ciliumNetworkPolicy:
   enabled: false
@@ -20,7 +24,8 @@ rollout:
   strategy: canary
   analysis:
     enabled: false
-    prometheusAddress: http://172.18.255.45
+    # Khi bật analysis: URL Prometheus management (nội bộ/VPC), không dùng lab Kind
+    prometheusAddress: ""
     load:
       vus: 10
       duration: 30s

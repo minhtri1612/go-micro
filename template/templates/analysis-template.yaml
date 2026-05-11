@@ -1,3 +1,4 @@
+{{- if not .Values.gatewayInfraOnly }}
 {{- if and (ne (.Values.workloadKind | default "deployment" | lower) "statefulset") (.Values.rollout.analysis.enabled | default false) }}
 {{- range $tpl := .Values.rollout.analysis.templates }}
 apiVersion: argoproj.io/v1alpha1
@@ -14,5 +15,6 @@ spec:
   metrics:
     {{- tpl (toYaml $tpl.metrics) $ | nindent 4 }}
 ---
+{{- end }}
 {{- end }}
 {{- end }}

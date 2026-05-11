@@ -53,7 +53,7 @@ def main():
     use_canary = os.getenv("CANARY_HEADER", "false").lower() == "true"
 
     headers = {
-        "Host": "dev.go-micro.local",
+        "Host": "dev-go-micro.local",
         "Content-Type": "application/json"
     }
     if use_canary:

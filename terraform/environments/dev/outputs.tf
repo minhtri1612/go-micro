@@ -1,0 +1,49 @@
+# OpenVPN chỉ có ở Management; dev truy cập qua jump host Management.
+
+output "master_private_ip" {
+  value       = module.rke2.master_private_ips
+  description = "Private IPs master nodes (sau khi VPN: ssh -i k8s-key.pem ubuntu@<ip>)"
+}
+
+output "master_public_ip" {
+  value = module.rke2.master_public_ips
+}
+
+output "worker_public_ips" {
+  value = module.rke2.worker_public_ips
+}
+
+output "nlb_dns_name" {
+  value       = module.loadbalancers.nlb_dns_name
+  description = "NLB DNS cho Kubernetes API"
+}
+
+output "cluster_api_url" {
+  value       = "https://${module.loadbalancers.nlb_dns_name}:6443"
+  description = "Kubernetes API URL cho ArgoCD đăng ký cluster (management deploy xuống env này)"
+}
+
+output "web_alb_dns_name" {
+  value       = module.loadbalancers.web_alb_dns_name
+  description = "ALB DNS cho Ingress (argocd.local, *-go-micro.local trong /etc/hosts)"
+}
+
+output "ssh_key_file" {
+  value       = module.keys.private_key_filename
+  description = "Đường dẫn file private key (provision.py / kubectl)"
+}
+
+output "environment" {
+  value = var.environment
+}
+
+output "eso_access_key_id" {
+  value       = module.iam.eso_access_key_id
+  description = "ESO IAM access key (configure.py → Secret aws-credentials)"
+}
+
+output "eso_secret_access_key" {
+  value       = module.iam.eso_secret_access_key
+  sensitive   = true
+  description = "ESO IAM secret key (configure.py; không in log)"
+}

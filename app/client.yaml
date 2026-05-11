@@ -13,14 +13,6 @@ service:
 
 ingress:
   enabled: false
-  className: "traefik"
-  annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: "default-cors@kubernetescrd"
-  hosts:
-    - host: app.local
-      paths:
-        - path: /
-          pathType: Prefix
 
 resources:
   limits:
@@ -75,12 +67,11 @@ useExternalSecrets: true
 workloadKind: rollout
 
 routing:
-  provider: traefik
+  provider: gateway
 
-traefik:
+httpRoute:
   enabled: true
-  ingressRouteForServices:
-    - client
+  pathPrefix: /
 
 rollout:
   enabled: true

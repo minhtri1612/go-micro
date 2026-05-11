@@ -2,14 +2,17 @@ env: prod
 projectName: go-micro
 
 routing:
-  provider: traefik
+  provider: gateway
 
-traefik:
-  enabled: true
-  hostname: go-micro.local
-  stableWeight: 99
-  canaryWeight: 1
-  darkLaunch: true
+httpRoute:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: go-micro-gateway
+      namespace: microservices-prod
+      sectionName: http
+  hostnames:
+    - prod-go-micro.local
 
 ciliumNetworkPolicy:
   enabled: false
@@ -20,7 +23,8 @@ rollout:
   strategy: canary
   analysis:
     enabled: false
-    prometheusAddress: http://172.18.255.45
+    # Khi bật analysis: URL Prometheus management (nội bộ/VPC)
+    prometheusAddress: ""
     load:
       vus: 12
       duration: 60s

@@ -63,15 +63,11 @@ extraEnv:
     value: http://noti:8083
 
 routing:
-  provider: traefik
+  provider: gateway
 
-traefik:
+httpRoute:
   enabled: true
   pathPrefix: /api/v1/orders
-  stripPrefixes:
-    - /api/v1/orders
-  ingressRouteForServices:
-    - order
 
 rollout:
   enabled: true
