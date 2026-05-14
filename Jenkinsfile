@@ -359,11 +359,25 @@ def parseTimeoutSeconds(String raw) {
 def devPodAptBootstrapShell() {
   return '''set -e
 export DEBIAN_FRONTEND=noninteractive
-# Pod thường không route IPv6; apt chọn AAAA của deb.debian.org → InRelease fail → "Unable to locate package git".
+# IPv6 thường không route; song song nhiều pod dễ trúng "Unable to connect" tới deb.debian.org → retry apt.
 mkdir -p /etc/apt/apt.conf.d
-echo 'Acquire::ForceIPv4 "true";' >/etc/apt/apt.conf.d/99force-ipv4
-apt-get update -qq
-apt-get install -y --no-install-recommends git ca-certificates
+cat >/etc/apt/apt.conf.d/99ci-go-micro <<'EOF'
+Acquire::ForceIPv4 "true";
+Acquire::Retries "5";
+EOF
+ok=0
+for attempt in 1 2 3 4 5 6; do
+  if apt-get update -qq && apt-get install -y --no-install-recommends git ca-certificates; then
+    ok=1
+    break
+  fi
+  echo "[WARN] apt update/install failed (attempt $attempt/6); retry in 18s..." >&2
+  sleep 18
+done
+if [ "$ok" != "1" ]; then
+  echo "[FATAL] apt could not install git after 6 attempts" >&2
+  exit 1
+fi
 rm -rf /var/lib/apt/lists/*
 command -v git >/dev/null
 pip install --no-cache-dir requests
