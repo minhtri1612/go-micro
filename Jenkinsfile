@@ -592,7 +592,7 @@ def waitRolloutComplete(String kubeContext, String namespace, String service) {
     'WRC_SVC=' + service,
     'WRC_DEADLINE_SEC=' + waitSec.toString(),
   ]) {
-    sh '''#!/bin/sh
+    sh '''#!/bin/bash
 set -e
 echo "Chờ rollout ${WRC_SVC} tới Healthy sau promote (poll mỗi 5s, tối đa ~${WRC_DEADLINE_SEC}s)..."
 if ! kubectl argo rollouts --context "${WRC_CTX}" version >/dev/null 2>&1; then
@@ -602,7 +602,10 @@ deadline=$(( $(date +%s) + ${WRC_DEADLINE_SEC} ))
 last_log=0
 degraded_streak=0
 while [ "$(date +%s)" -lt "$deadline" ]; do
-  ph=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null | awk 'NR==1{gsub("\r",""); gsub("\n",""); print; exit}')
+  ph=""
+  if IFS= read -r ph < <(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null); then
+    :
+  fi
   ph=${ph:-}
   case "$ph" in
     Healthy)
