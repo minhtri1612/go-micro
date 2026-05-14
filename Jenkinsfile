@@ -137,9 +137,9 @@ pipeline {
         script {
           echo "--- QUALITY GATES PASSED ---"
           echo "Chờ chọn hành động rollout cho service: ${env.RESOLVED_ROLLOUT_SERVICE}"
-          def decision = 'Promote to stable'
+          def rawDecision = null
           timeout(time: 30, unit: 'MINUTES') {
-            decision = input(
+            rawDecision = input(
               id: "rollout-decision-${env.BUILD_NUMBER}",
               message: "Quality gate PASS cho [${env.RESOLVED_ROLLOUT_SERVICE}]. Chọn Promote hoặc Rollback.",
               ok: 'Xác nhận',
@@ -148,9 +148,16 @@ pipeline {
               ]
             )
           }
+          // input() with parameters returns a Map (e.g. [ROLLOUT_ACTION: '...']), not a plain String.
+          def decision = (rawDecision instanceof Map) ? rawDecision['ROLLOUT_ACTION']?.toString() : rawDecision?.toString()
+          echo "Rollout manual choice: ${decision}"
           if (decision == 'Rollback now') {
             runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
             error("Manual decision = rollback. Rollout đã abort theo yêu cầu.")
+          } else if (decision == 'Promote to stable') {
+            runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
+          } else {
+            error("Unexpected ROLLOUT_ACTION value: '${decision}'")
           }
         }
       }
@@ -226,8 +233,9 @@ pipeline {
           runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
         } else if (params.PIPELINE_SCOPE == 'full' && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
           def failDecision = params.ON_FAILURE_MANUAL_ACTION ?: 'Rollback now'
+          def rawFail = null
           timeout(time: 20, unit: 'MINUTES') {
-            failDecision = input(
+            rawFail = input(
               id: "failure-action-${env.BUILD_NUMBER}",
               message: "Pipeline FAILED cho [${env.RESOLVED_ROLLOUT_SERVICE}]. Chọn rollback hay giữ nguyên trạng thái rollout.",
               ok: 'Xác nhận',
@@ -236,6 +244,8 @@ pipeline {
               ]
             )
           }
+          failDecision = (rawFail instanceof Map) ? rawFail['FAILURE_ACTION']?.toString() : rawFail?.toString()
+          echo "Failure manual choice: ${failDecision}"
           if (failDecision == 'Rollback now') {
             runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
           } else {
