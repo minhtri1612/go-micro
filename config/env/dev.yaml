@@ -36,10 +36,14 @@ rollout:
   canary:
     # Không chạy Analysis trong cluster; test ở pipeline ngoài rồi promote thủ công/qua pipeline.
     steps:
-      - setWeight: 5
+      - setWeight: 1
       - pause:
           duration: 1m
+      - setWeight: 20
+      - pause: {}
       - setWeight: 50
+      - pause: {}
+      - setWeight: 80
       - pause: {}
       - setWeight: 100
 

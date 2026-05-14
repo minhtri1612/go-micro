@@ -109,10 +109,16 @@ rollout:
     maxSurge: 25%
     maxUnavailable: 0
     steps:
-      - setWeight: 20
+      - setWeight: 1
       - pause:
           duration: 60s
+      - setWeight: 20
+      - pause:
+          duration: 120s
       - setWeight: 50
+      - pause:
+          duration: 120s
+      - setWeight: 80
       - pause:
           duration: 120s
       - setWeight: 100

@@ -35,10 +35,16 @@ rollout:
       successFailureLimit: 1
   canary:
     steps:
-      - setWeight: 5
+      - setWeight: 1
+      - pause:
+          duration: 5m
+      - setWeight: 20
       - pause:
           duration: 5m
       - setWeight: 50
+      - pause:
+          duration: 5m
+      - setWeight: 80
       - pause:
           duration: 5m
       - setWeight: 100

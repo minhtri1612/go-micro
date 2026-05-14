@@ -157,10 +157,12 @@ rollout:
                   {{- end }}
   canary:
     steps:
-      - setWeight: 5
+      - setWeight: 1
       - pause:
           duration: 1m
+      - setWeight: 20
       - setWeight: 50
+      - setWeight: 80
       - setWeight: 100
   blueGreen:
     activeService: ""
