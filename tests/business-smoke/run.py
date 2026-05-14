@@ -4,6 +4,20 @@ import requests
 import time
 import random
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "lib"))
+try:
+    from inventory_api import inventory_check_is_available
+except ImportError:
+    inventory_check_is_available = None
+
+
+def _inventory_available(resp_json):
+    if inventory_check_is_available is not None:
+        return inventory_check_is_available(resp_json)
+    p = resp_json if isinstance(resp_json, dict) else {}
+    return p.get("is_available") is True or p.get("available") is True
+
+
 def get_svc_prefix(service):
     prefixes = {
         "product": "/api/v1/products",
@@ -112,7 +126,7 @@ def main():
             tries = 0
             while tries < 12:
                 check_resp = requests.post(f"{i_base}/inventory/check", headers=headers, json={"product_id": real_pid, "quantity": 1})
-                if check_resp.status_code < 400 and check_resp.json().get('is_available'):
+                if check_resp.status_code < 400 and _inventory_available(check_resp.json()):
                     print("[DBG] inventory check ready")
                     break
                 tries += 1

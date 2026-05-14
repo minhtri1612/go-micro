@@ -8,10 +8,19 @@ import json
 # Import our pure-requests K8s client
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'lib'))
 try:
+    from inventory_api import inventory_check_is_available
     from k8s_requests import K8sClient
 except ImportError:
     # Fallback if lib is not found in path
     K8sClient = None
+    inventory_check_is_available = None
+
+
+def _inventory_available(resp_json):
+    if inventory_check_is_available is not None:
+        return inventory_check_is_available(resp_json)
+    p = resp_json if isinstance(resp_json, dict) else {}
+    return p.get("is_available") is True or p.get("available") is True
 
 def get_svc_prefix(service):
     prefixes = {
@@ -117,7 +126,7 @@ def main():
             for _ in range(5):
                 check_body = {"product_id": pid, "quantity": 50}
                 resp = curl_retry(f"{base_url}/inventory/check", method="POST", body=check_body, headers=headers)
-                if resp.json().get('is_available') is True:
+                if _inventory_available(resp.json()):
                     success = True
                     break
                 time.sleep(2)
@@ -147,7 +156,7 @@ def main():
             tries = 0
             while tries < 12:
                 check_resp = requests.post(f"{i_base}/inventory/check", headers={"Host": headers["Host"], "Content-Type": "application/json"}, json={"product_id": real_pid, "quantity": 1})
-                if check_resp.status_code < 400 and check_resp.json().get('is_available'):
+                if check_resp.status_code < 400 and _inventory_available(check_resp.json()):
                     print("[DBG] inventory ready for order")
                     break
                 tries += 1
