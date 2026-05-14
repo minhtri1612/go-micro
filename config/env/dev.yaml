@@ -34,7 +34,8 @@ rollout:
       successInitialDelay: 45s
       successFailureLimit: 3
   canary:
-    # Không chạy Analysis trong cluster; test ở pipeline ngoài rồi promote thủ công/qua pipeline.
+    # Một pause: {} duy nhất (sau 20%) = chờ Jenkins gate + promote. Các bước sau dùng pause có duration
+    # để vẫn chạy lần lượt 50→80→100 mà không cần bấm promote thêm.
     steps:
       - setWeight: 1
       - pause:
@@ -42,9 +43,11 @@ rollout:
       - setWeight: 20
       - pause: {}
       - setWeight: 50
-      - pause: {}
+      - pause:
+          duration: 2m
       - setWeight: 80
-      - pause: {}
+      - pause:
+          duration: 2m
       - setWeight: 100
 
 product:

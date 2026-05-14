@@ -53,6 +53,7 @@ pipeline {
     string(name: 'K6_DURATION', defaultValue: '15s', description: 'k6 duration')
     string(name: 'K6_ERROR_RATE', defaultValue: '0.1', description: 'k6 http_req_failed threshold (rate<value)')
     string(name: 'POD_WAIT_TIMEOUT', defaultValue: '600s', description: 'Timeout chờ mỗi pod test hoàn thành (ví dụ: 300s, 600s).')
+    string(name: 'ROLLOUT_WAIT_TIMEOUT', defaultValue: '45m', description: 'Sau promote: chờ rollout tới xong (kubectl argo rollouts status --watch). GNU timeout hoặc flag CLI; ví dụ 45m, 30m.')
   }
 
   stages {
@@ -156,6 +157,7 @@ pipeline {
             error("Manual decision = rollback. Rollout đã abort theo yêu cầu.")
           } else if (decision == 'Promote to stable') {
             runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
+            waitRolloutComplete(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE)
           } else {
             error("Unexpected ROLLOUT_ACTION value: '${decision}'")
           }
@@ -221,6 +223,7 @@ pipeline {
       steps {
         script {
           runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
+          waitRolloutComplete(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE)
         }
       }
     }
@@ -288,7 +291,7 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
     kubectl --context ${kubeContext} -n ${namespace} run ${podName} --image=${image} --restart=Never --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"${serviceAccount}"}}' --command -- sh -lc '${escaped}'
     START=\$(date +%s)
     while true; do
-      PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '\r\n' || true)
+      PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '[:cntrl:]' || true)
       PHASE=\${PHASE:-Unknown}
       if [ "\$PHASE" = "Succeeded" ] || [ "\$PHASE" = "Failed" ]; then
         break
@@ -302,7 +305,7 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
       sleep 2
     done
     kubectl --context ${kubeContext} -n ${namespace} logs ${podName} || true
-    PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '\r\n' || true)
+    PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '[:cntrl:]' || true)
     PHASE=\${PHASE:-Unknown}
     if [ "\$PHASE" != "Succeeded" ]; then
       echo "Pod ${podName} ended with phase \$PHASE (timeout=${timeout})"
@@ -569,5 +572,35 @@ def runRolloutAction(String kubeContext, String namespace, String service, Strin
       fi
     fi
     kubectl --context ${kubeContext} -n ${namespace} get rollout ${service}
+  """
+}
+
+def waitRolloutComplete(String kubeContext, String namespace, String service) {
+  String waitRaw = (params.ROLLOUT_WAIT_TIMEOUT ?: '45m').trim()
+  int waitSec = parseTimeoutSeconds(waitRaw)
+  sh """
+    set -e
+    echo "Chờ rollout '${service}' chạy xong sau promote (watch status, tối đa ~${waitSec}s)..."
+    if kubectl argo rollouts --context ${kubeContext} version >/dev/null 2>&1; then
+      if command -v timeout >/dev/null 2>&1; then
+        timeout "${waitRaw}" kubectl argo rollouts --context ${kubeContext} -n ${namespace} status ${service} --watch
+      else
+        kubectl argo rollouts --context ${kubeContext} -n ${namespace} status ${service} --watch --timeout=${waitRaw}
+      fi
+    else
+      echo "WARN: không có kubectl-argo-rollouts; poll .status.phase tới Healthy"
+      deadline=\\$((\\$(date +%s) + ${waitSec}))
+      while [ \\$(date +%s) -lt \\$deadline ]; do
+        ph=\\$(kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '[:cntrl:]' || true)
+        case "\\$ph" in
+          Healthy) echo "Rollout Healthy."; exit 0 ;;
+          Degraded|Failed) echo "Rollout không ổn: \\$ph"; kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} -o wide || true; exit 1 ;;
+        esac
+        sleep 5
+      done
+      echo "Timeout chờ rollout Healthy."
+      kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} -o wide || true
+      exit 1
+    fi
   """
 }
