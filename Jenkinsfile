@@ -578,20 +578,22 @@ def runRolloutAction(String kubeContext, String namespace, String service, Strin
 def waitRolloutComplete(String kubeContext, String namespace, String service) {
   String waitRaw = (params.ROLLOUT_WAIT_TIMEOUT ?: '45m').trim()
   int waitSec = parseTimeoutSeconds(waitRaw)
+  // Tránh {.status.phase} trong """ — Groovy coi {…} là GString expression.
+  String rolloutPhaseJsonPath = '{.status.phase}'
   sh """
     set -e
     echo "Chờ rollout '${service}' chạy xong sau promote (watch status, tối đa ~${waitSec}s)..."
     if kubectl argo rollouts --context ${kubeContext} version >/dev/null 2>&1; then
       if command -v timeout >/dev/null 2>&1; then
-        timeout "${waitRaw}" kubectl argo rollouts --context ${kubeContext} -n ${namespace} status ${service} --watch
+        timeout '${waitRaw}' kubectl argo rollouts --context ${kubeContext} -n ${namespace} status ${service} --watch
       else
-        kubectl argo rollouts --context ${kubeContext} -n ${namespace} status ${service} --watch --timeout=${waitRaw}
+        kubectl argo rollouts --context ${kubeContext} -n ${namespace} status ${service} --watch --timeout='${waitRaw}'
       fi
     else
       echo "WARN: không có kubectl-argo-rollouts; poll .status.phase tới Healthy"
       deadline=\\$((\\$(date +%s) + ${waitSec}))
       while [ \\$(date +%s) -lt \\$deadline ]; do
-        ph=\\$(kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '[:cntrl:]' || true)
+        ph=\\$(kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} -o jsonpath='${rolloutPhaseJsonPath}' 2>/dev/null | tr -d '[:cntrl:]' || true)
         case "\\$ph" in
           Healthy) echo "Rollout Healthy."; exit 0 ;;
           Degraded|Failed) echo "Rollout không ổn: \\$ph"; kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} -o wide || true; exit 1 ;;
