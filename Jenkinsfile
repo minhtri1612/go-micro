@@ -286,13 +286,15 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
   String timeout = (params.POD_WAIT_TIMEOUT ?: '600s').trim()
   String serviceAccount = (params.DEV_TEST_SERVICE_ACCOUNT ?: 'default').trim()
   int timeoutSeconds = parseTimeoutSeconds(timeout)
-  sh """
+  sh """#!/bin/bash
     set -e
     kubectl --context ${kubeContext} -n ${namespace} run ${podName} --image=${image} --restart=Never --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"${serviceAccount}"}}' --command -- sh -lc '${escaped}'
     START=\$(date +%s)
     while true; do
-      PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '\\015\\012' || true)
-      PHASE=\${PHASE:-Unknown}
+      PHASE=Unknown
+      if IFS= read -r phase_line < <(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null); then
+        PHASE=\$phase_line
+      fi
       if [ "\$PHASE" = "Succeeded" ] || [ "\$PHASE" = "Failed" ]; then
         break
       fi
@@ -305,8 +307,10 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
       sleep 2
     done
     kubectl --context ${kubeContext} -n ${namespace} logs ${podName} || true
-    PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '\\015\\012' || true)
-    PHASE=\${PHASE:-Unknown}
+    PHASE=Unknown
+    if IFS= read -r phase_line < <(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null); then
+      PHASE=\$phase_line
+    fi
     if [ "\$PHASE" != "Succeeded" ]; then
       echo "Pod ${podName} ended with phase \$PHASE (timeout=${timeout})"
       kubectl --context ${kubeContext} -n ${namespace} describe pod/${podName} || true
@@ -593,22 +597,39 @@ if ! kubectl argo rollouts --context "${WRC_CTX}" version >/dev/null 2>&1; then
 fi
 deadline=$(( $(date +%s) + ${WRC_DEADLINE_SEC} ))
 last_log=0
+degraded_streak=0
 while [ "$(date +%s)" -lt "$deadline" ]; do
-  ph=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null | tr -d '\015\012' || true)
+  ph=""
+  if IFS= read -r ph_line < <(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null); then
+    ph="$ph_line"
+  fi
   case "$ph" in
     Healthy)
       echo "Rollout Healthy."
       kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
       exit 0
       ;;
-    Degraded|Failed)
-      echo "Rollout không ổn: phase=$ph"
+    Failed)
+      echo "Rollout Failed."
       kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
+      kubectl argo rollouts --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" 2>/dev/null | head -40 || true
       exit 1
       ;;
+    Degraded)
+      degraded_streak=$((degraded_streak + 1))
+      if [ "$degraded_streak" -ge 36 ]; then
+        echo "Rollout Degraded liên tục ~3 phút (36 lần poll), dừng."
+        kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
+        kubectl argo rollouts --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" 2>/dev/null | head -40 || true
+        exit 1
+      fi
+      echo "WARN: phase=Degraded (lần $degraded_streak/36, có thể tạm sau promote), tiếp tục chờ..."
+      ;;
     "")
+      degraded_streak=0
       ;;
     *)
+      degraded_streak=0
       now=$(date +%s)
       if [ $((now - last_log)) -ge 30 ]; then
         echo "... vẫn chờ (phase=$ph)"
