@@ -359,6 +359,9 @@ def parseTimeoutSeconds(String raw) {
 def devPodAptBootstrapShell() {
   return '''set -e
 export DEBIAN_FRONTEND=noninteractive
+# Pod thường không route IPv6; apt chọn AAAA của deb.debian.org → InRelease fail → "Unable to locate package git".
+mkdir -p /etc/apt/apt.conf.d
+echo 'Acquire::ForceIPv4 "true";' >/etc/apt/apt.conf.d/99force-ipv4
 apt-get update -qq
 apt-get install -y --no-install-recommends git ca-certificates
 rm -rf /var/lib/apt/lists/*
