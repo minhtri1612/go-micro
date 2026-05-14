@@ -1,5 +1,35 @@
 import sys
+import time
 import requests
+
+
+def fetch_health_with_retries(url, headers, max_attempts=15, delay_secs=3):
+    """Ingress/MetalLB có thể từ chối kết nối tạm khi pod CI vừa lên; dependency/business đã dùng curl_retry."""
+    last_exc = None
+    last_response = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            last_response = response
+            if response.status_code in (502, 503, 504) and attempt < max_attempts:
+                print(
+                    f"[RETRY {attempt}/{max_attempts}] status {response.status_code}, "
+                    f"sleep {delay_secs}s"
+                )
+                time.sleep(delay_secs)
+                continue
+            return response
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            last_exc = e
+            print(f"[RETRY {attempt}/{max_attempts}] {e}")
+            if attempt < max_attempts:
+                time.sleep(delay_secs)
+    if last_exc:
+        raise last_exc
+    if last_response is not None:
+        return last_response
+    raise requests.exceptions.ConnectionError(f"No response after {max_attempts} attempts for {url}")
+
 
 def main():
     if len(sys.argv) < 4:
@@ -37,7 +67,7 @@ def main():
     print(f"Requesting: {url} mode={mode} with headers={headers}")
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = fetch_health_with_retries(url, headers)
     except Exception as e:
         print(f"FAILED: request could not connect to {url}")
         print(f"Error: {e}")
