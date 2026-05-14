@@ -620,6 +620,16 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
       exit 1
       ;;
     Degraded)
+      # Argo đôi khi giữ phase=Degraded + message RolloutAborted dù stable đã đủ pod (canary RS scale về 0).
+      desired=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
+      ready=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
+      upd=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.status.updatedReplicas}' 2>/dev/null || true)
+      desired=${desired:-}; ready=${ready:-}; upd=${upd:-}
+      if [ -n "$desired" ] && [ "$ready" = "$desired" ] && [ "$upd" = "0" ]; then
+        echo "INFO: phase=Degraded nhưng fleet stable ổn (ready=${ready}/desired=${desired}, updatedReplicas=0) — coi như promote xong."
+        kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
+        exit 0
+      fi
       degraded_streak=$((degraded_streak + 1))
       if [ "$degraded_streak" -ge 36 ]; then
         echo "Rollout Degraded liên tục ~3 phút (36 lần poll), dừng."

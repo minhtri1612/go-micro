@@ -12,8 +12,8 @@ product:
 
 inventory:
   image:
-    tag: "inventory-service-v1.0.3"
-  replicaCount: 5
+    tag: "inventory-service-v1.0.1"
+  replicaCount: 7
   rollout:
     enabled: true
     strategy: canary
