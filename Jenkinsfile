@@ -578,31 +578,38 @@ def runRolloutAction(String kubeContext, String namespace, String service, Strin
 def waitRolloutComplete(String kubeContext, String namespace, String service) {
   String waitRaw = (params.ROLLOUT_WAIT_TIMEOUT ?: '45m').trim()
   int waitSec = parseTimeoutSeconds(waitRaw)
-  // Tránh {.status.phase} trong """ — Groovy coi {…} là GString expression.
-  String rolloutPhaseJsonPath = '{.status.phase}'
-  sh """
-    set -e
-    echo "Chờ rollout '${service}' chạy xong sau promote (watch status, tối đa ~${waitSec}s)..."
-    if kubectl argo rollouts --context ${kubeContext} version >/dev/null 2>&1; then
-      if command -v timeout >/dev/null 2>&1; then
-        timeout '${waitRaw}' kubectl argo rollouts --context ${kubeContext} -n ${namespace} status ${service} --watch
-      else
-        kubectl argo rollouts --context ${kubeContext} -n ${namespace} status ${service} --watch --timeout='${waitRaw}'
-      fi
-    else
-      echo "WARN: không có kubectl-argo-rollouts; poll .status.phase tới Healthy"
-      deadline=\\$((\\$(date +%s) + ${waitSec}))
-      while [ \\$(date +%s) -lt \\$deadline ]; do
-        ph=\\$(kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} -o jsonpath='${rolloutPhaseJsonPath}' 2>/dev/null | tr -d '[:cntrl:]' || true)
-        case "\\$ph" in
-          Healthy) echo "Rollout Healthy."; exit 0 ;;
-          Degraded|Failed) echo "Rollout không ổn: \\$ph"; kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} -o wide || true; exit 1 ;;
-        esac
-        sleep 5
-      done
-      echo "Timeout chờ rollout Healthy."
-      kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} -o wide || true
-      exit 1
-    fi
-  """
+  // Dùng withEnv + sh ''' để Groovy không parse ${…} trong chuỗi (lỗi CPS với --timeout='${waitRaw}').
+  withEnv([
+    'WRC_WAIT=' + waitRaw,
+    'WRC_CTX=' + kubeContext,
+    'WRC_NS=' + namespace,
+    'WRC_SVC=' + service,
+    'WRC_DEADLINE_SEC=' + waitSec.toString(),
+  ]) {
+    sh '''#!/bin/bash
+set -e
+echo "Chờ rollout ${WRC_SVC} chạy xong sau promote (watch status, tối đa ~${WRC_DEADLINE_SEC}s)..."
+if kubectl argo rollouts --context "${WRC_CTX}" version >/dev/null 2>&1; then
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${WRC_WAIT}" kubectl argo rollouts --context "${WRC_CTX}" -n "${WRC_NS}" status "${WRC_SVC}" --watch
+  else
+    kubectl argo rollouts --context "${WRC_CTX}" -n "${WRC_NS}" status "${WRC_SVC}" --watch --timeout="${WRC_WAIT}"
+  fi
+else
+  echo "WARN: không có kubectl-argo-rollouts; poll .status.phase tới Healthy"
+  deadline=$(( $(date +%s) + ${WRC_DEADLINE_SEC} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    ph=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null | tr -d "[:cntrl:]" || true)
+    case "$ph" in
+      Healthy) echo "Rollout Healthy."; exit 0 ;;
+      Degraded|Failed) echo "Rollout không ổn: $ph"; kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true; exit 1 ;;
+    esac
+    sleep 5
+  done
+  echo "Timeout chờ rollout Healthy."
+  kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
+  exit 1
+fi
+'''
+  }
 }
