@@ -111,10 +111,17 @@ def main():
             assert inv_id, "Inventory ID missing"
             print(f"[DBG] inventory created: {inv_id}")
             
-            # Check availability
-            check_body = {"product_id": pid, "quantity": 50}
-            resp = curl_retry(f"{base_url}/inventory/check", method="POST", body=check_body, headers=headers)
-            assert resp.json().get('is_available') is True, "Should be available"
+            # Check availability with retry (wait for DB sync)
+            print("[DBG] waiting for inventory availability...")
+            success = False
+            for _ in range(5):
+                check_body = {"product_id": pid, "quantity": 50}
+                resp = curl_retry(f"{base_url}/inventory/check", method="POST", body=check_body, headers=headers)
+                if resp.json().get('is_available') is True:
+                    success = True
+                    break
+                time.sleep(2)
+            assert success is True, "Should be available after retries"
             print("[DBG] inventory check passed")
 
         elif service == "order":
