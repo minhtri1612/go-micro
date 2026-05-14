@@ -291,7 +291,7 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
     kubectl --context ${kubeContext} -n ${namespace} run ${podName} --image=${image} --restart=Never --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"${serviceAccount}"}}' --command -- sh -lc '${escaped}'
     START=\$(date +%s)
     while true; do
-      PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d \$'\\r\\n' || true)
+      PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '\\015\\012' || true)
       PHASE=\${PHASE:-Unknown}
       if [ "\$PHASE" = "Succeeded" ] || [ "\$PHASE" = "Failed" ]; then
         break
@@ -305,7 +305,7 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
       sleep 2
     done
     kubectl --context ${kubeContext} -n ${namespace} logs ${podName} || true
-    PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d \$'\\r\\n' || true)
+    PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | tr -d '\\015\\012' || true)
     PHASE=\${PHASE:-Unknown}
     if [ "\$PHASE" != "Succeeded" ]; then
       echo "Pod ${podName} ended with phase \$PHASE (timeout=${timeout})"
@@ -348,6 +348,18 @@ def parseTimeoutSeconds(String raw) {
   error("POD_WAIT_TIMEOUT không hợp lệ: '${raw}'. Dùng dạng 300s, 10m, 1h hoặc số giây.")
 }
 
+/** Apt + pip inside ephemeral python pods; must not hide install failures (silent apt break → git missing). */
+def devPodAptBootstrapShell() {
+  return '''set -e
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y --no-install-recommends git ca-certificates
+rm -rf /var/lib/apt/lists/*
+command -v git >/dev/null
+pip install --no-cache-dir requests
+'''
+}
+
 /** Shell snippet: clone repo into /tmp/go-micro (retries; do not swallow errors — parallel pods hammer GitHub). */
 def devPodCloneRepoShell() {
   return '''export GIT_TERMINAL_PROMPT=0
@@ -374,10 +386,7 @@ def runDependencyCheckSteps() {
       params.DEV_TEST_NAMESPACE,
       'python:3.11-slim',
       """
-        apt-get update >/dev/null 2>&1
-        apt-get install -y --no-install-recommends git ca-certificates >/dev/null 2>&1
-        rm -rf /var/lib/apt/lists/*
-        pip install requests >/dev/null 2>&1
+        ${devPodAptBootstrapShell()}
         ${devPodCloneRepoShell()}
         CANARY_HEADER=${canaryHeader} python3 tests/dependency-check/run.py ${svc} ${params.BACKEND_IP}
       """,
@@ -397,10 +406,7 @@ def runBusinessSmokeSteps() {
       params.DEV_TEST_NAMESPACE,
       'python:3.11-slim',
       """
-        apt-get update >/dev/null 2>&1
-        apt-get install -y --no-install-recommends git ca-certificates >/dev/null 2>&1
-        rm -rf /var/lib/apt/lists/*
-        pip install requests >/dev/null 2>&1
+        ${devPodAptBootstrapShell()}
         ${devPodCloneRepoShell()}
         CANARY_HEADER=${canaryHeader} python3 tests/business-smoke/run.py ${svc} ${params.BACKEND_IP}
       """,
@@ -416,10 +422,7 @@ def runRouteSmokeSteps() {
     params.DEV_TEST_NAMESPACE,
     'python:3.11-slim',
     """
-      apt-get update >/dev/null 2>&1
-      apt-get install -y --no-install-recommends git ca-certificates >/dev/null 2>&1
-      rm -rf /var/lib/apt/lists/*
-      pip install requests >/dev/null 2>&1
+      ${devPodAptBootstrapShell()}
       ${devPodCloneRepoShell()}
       python3 tests/route-smoke-test/run.py ${params.TARGET_HOST} ${env.EFFECTIVE_ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
     """,
@@ -434,10 +437,7 @@ def runK8sNodeCheckSteps() {
     params.DEV_TEST_NAMESPACE,
     'python:3.11-slim',
     """
-      apt-get update >/dev/null 2>&1
-      apt-get install -y --no-install-recommends git ca-certificates >/dev/null 2>&1
-      rm -rf /var/lib/apt/lists/*
-      pip install requests >/dev/null 2>&1
+      ${devPodAptBootstrapShell()}
       ${devPodCloneRepoShell()}
       python3 tests/k8s-node-check/run.py
     """,
@@ -594,7 +594,7 @@ fi
 deadline=$(( $(date +%s) + ${WRC_DEADLINE_SEC} ))
 last_log=0
 while [ "$(date +%s)" -lt "$deadline" ]; do
-  ph=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null | tr -d $'\r\n' || true)
+  ph=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null | tr -d '\015\012' || true)
   case "$ph" in
     Healthy)
       echo "Rollout Healthy."
