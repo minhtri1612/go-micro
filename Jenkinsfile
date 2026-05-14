@@ -294,7 +294,7 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
     ITER=0
     while true; do
       ITER=\$((ITER + 1))
-      PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | awk 'NR==1{gsub(/\\r/,\"\"); gsub(/\\n/,\"\"); print; exit}' || true)
+      PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | awk 'NR==1{gsub(\"\\r\",\"\"); gsub(\"\\n\",\"\"); print; exit}' || true)
       PHASE=\${PHASE:-Unknown}
       if [ "\$PHASE" = "Succeeded" ] || [ "\$PHASE" = "Failed" ]; then
         break
@@ -312,7 +312,7 @@ def runInDevPod(String kubeContext, String namespace, String image, String scrip
       sleep 2
     done
     kubectl --context ${kubeContext} -n ${namespace} logs ${podName} || true
-    PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | awk 'NR==1{gsub(/\\r/,\"\"); gsub(/\\n/,\"\"); print; exit}' || true)
+    PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | awk 'NR==1{gsub(\"\\r\",\"\"); gsub(\"\\n\",\"\"); print; exit}' || true)
     PHASE=\${PHASE:-Unknown}
     if [ "\$PHASE" != "Succeeded" ]; then
       echo "Pod ${podName} ended with phase \$PHASE (timeout=${timeout})"
@@ -602,7 +602,7 @@ deadline=$(( $(date +%s) + ${WRC_DEADLINE_SEC} ))
 last_log=0
 degraded_streak=0
 while [ "$(date +%s)" -lt "$deadline" ]; do
-  ph=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null | awk 'NR==1{gsub(/\r/,""); gsub(/\n/,""); print; exit}')
+  ph=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null | awk 'NR==1{gsub("\r",""); gsub("\n",""); print; exit}')
   ph=${ph:-}
   case "$ph" in
     Healthy)
