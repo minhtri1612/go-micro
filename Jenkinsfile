@@ -620,13 +620,22 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
       exit 1
       ;;
     Degraded)
-      # Argo đôi khi giữ phase=Degraded + message RolloutAborted dù stable đã đủ pod (canary RS scale về 0).
-      desired=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
+      # Argo đôi khi giữ phase=Degraded + RolloutAborted dù stable đủ pod (canary RS scale về 0).
+      # Không so ready với spec.replicas: env có thể 7 nhưng cluster đang 5 → mismatch vĩnh viễn.
+      cur=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.status.replicas}' 2>/dev/null || true)
       ready=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
       upd=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.status.updatedReplicas}' 2>/dev/null || true)
-      desired=${desired:-}; ready=${ready:-}; upd=${upd:-}
-      if [ -n "$desired" ] && [ "$ready" = "$desired" ] && [ "$upd" = "0" ]; then
-        echo "INFO: phase=Degraded nhưng fleet stable ổn (ready=${ready}/desired=${desired}, updatedReplicas=0) — coi như promote xong."
+      desired=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
+      cur=${cur:-}; ready=${ready:-}; upd=${upd:-}; desired=${desired:-}
+      [ -z "$upd" ] && upd=0
+      ok=0
+      if [ -n "$cur" ] && [ "$cur" != "0" ] && [ "$ready" = "$cur" ] && [ "$upd" = "0" ]; then
+        ok=1
+      elif [ -n "$desired" ] && [ "$ready" = "$desired" ] && [ "$upd" = "0" ]; then
+        ok=1
+      fi
+      if [ "$ok" = "1" ]; then
+        echo "INFO: phase=Degraded nhưng fleet ổn định (status.replicas=${cur} ready=${ready}, spec.replicas=${desired}, updatedReplicas=${upd}) — coi như promote xong."
         kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
         exit 0
       fi
