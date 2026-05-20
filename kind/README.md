@@ -103,8 +103,14 @@ Application: `argocd/bootstrap/22-jenkins-mgmt.yaml` → Service **`jenkins-mana
 
 Job mẫu **go-micro** (kết nối GitHub) được khai báo bằng **JCasC + Job DSL** trong `jenkins/jenkins-values.yaml` (`configScripts`); pipeline thật nằm ở **`Jenkinsfile`** ở root repo. Repo **private** cần thêm **credentials** trong JCasC + `remote { credentials('id') }` (không commit token).
 
+> [!IMPORTANT]
+> **Bắt buộc phải tạo Secret `jenkins-internal-kubeconfig` trước khi deploy/sync Jenkins**, nếu không pod sẽ bị kẹt ở trạng thái `Pending` / `FailedMount` do không mount được volume kubeconfig. Chạy script tạo secret dưới đây:
+
 ```bash
 kubectl config use-context kind-management
+# Tạo Secret kubeconfig nội bộ cho Jenkins (chạy từ root repo)
+bash scripts/jenkins-generate-internal-kubeconfig.sh
+
 kubectl apply -f argocd/bootstrap/22-jenkins-mgmt.yaml
 argocd --grpc-web app sync jenkins-management && argocd --grpc-web app wait jenkins-management --sync --timeout 300
 kubectl -n jenkins get svc,pods
@@ -112,6 +118,7 @@ kubectl -n jenkins get svc,pods
 kubectl -n jenkins port-forward svc/jenkins-management 8081:8080
 kubectl -n jenkins get secret jenkins-management -o jsonpath='{.data.jenkins-admin-password}' | base64 -d && echo
 ```
+
 
 **Đăng nhập vẫn báo sai dù đã decode Secret đúng:** Jenkins không đọc pass trực tiếp từ Secret mỗi lần đăng nhập — pass thật nằm trong **`/var/jenkins_home`** (PVC). Secret chỉ khớp **lần khởi tạo đầu** (hoặc khi home trống). PVC cũ / đã đổi pass trên UI → hash trong PVC **lệch** Secret → decode Secret **không** vào được.
 
