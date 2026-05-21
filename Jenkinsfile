@@ -1,7 +1,8 @@
 // Luồng lab:
-//   git push main → poll SCM (~5p) hoặc Build: PIPELINE_SCOPE=build-only, BUILD_SERVICES=auto, PUSH_GIT=true
-//     → detect service đổi → bump tag trong env/dev.yaml (+1 patch) → docker push Hub → git push env
-//   Promote: PIPELINE_SCOPE=full, chọn DEPENDENCY/BUSINESS/ROLLOUT = service vừa deploy → test → Promote
+//   git push code (*-service/) → poll SCM: build-only + BUILD_SERVICES=auto (mặc định)
+//     → CHỈ service có file đổi trong commit → bump tag → docker push → git push env
+//   Commit "ci: bump …" / không đổi *-service/ → SKIP build (không bump thêm).
+//   Promote: PIPELINE_SCOPE=full (hoặc build-and-full), ROLLOUT_SERVICE = service vừa deploy — KHÔNG có trong build-only.
 // Credentials: dockerhub-credentials, github-go-micro-pat (bắt buộc cho PUSH_GIT).
 
 pipeline {
@@ -16,6 +17,7 @@ pipeline {
   environment {
     KUBECONFIG = '/var/jenkins_home/.kube/config'
     EFFECTIVE_EXECUTION_MODE = 'dev-pod'
+    SKIP_IMAGE_BUILD = 'false'
   }
 
   parameters {
@@ -27,8 +29,8 @@ pipeline {
     choice(name: 'TARGET_ENV', choices: ['dev', 'staging'], description: 'env/<TARGET_ENV>.yaml — dùng khi scope có build.')
     choice(
       name: 'BUILD_SERVICES',
-      choices: ['all', 'auto', 'product', 'inventory', 'order', 'payment', 'noti', 'client'],
-      description: '`all` = build 6 service + client (mặc định). `auto` = chỉ thư mục *-service/ có trong commit (commit chỉ Jenkinsfile → 0 service).'
+      choices: ['auto', 'all', 'product', 'inventory', 'order', 'payment', 'noti', 'client'],
+      description: '`auto` (mặc định) = chỉ *-service/ hoặc client/ đổi trong commit; không đổi → skip build. `all` = build cả 6+client (chỉ khi cần rebuild hàng loạt).'
     )
     booleanParam(name: 'PUSH_GIT', defaultValue: true, description: 'Sau build: commit + push env/<TARGET_ENV>.yaml lên Git (Argo sync tag mới).')
     string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Branch push Git sau build.')
@@ -76,9 +78,23 @@ pipeline {
       }
     }
 
-    stage('Build & push images') {
+    stage('Precheck build') {
       when {
         expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
+      }
+      steps {
+        script {
+          precheckImageBuild()
+        }
+      }
+    }
+
+    stage('Build & push images') {
+      when {
+        allOf {
+          expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
+          expression { env.SKIP_IMAGE_BUILD != 'true' }
+        }
       }
       steps {
         script {
@@ -92,6 +108,7 @@ pipeline {
         allOf {
           expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
           expression { params.PUSH_GIT == true }
+          expression { env.SKIP_IMAGE_BUILD != 'true' }
         }
       }
       steps {
@@ -313,19 +330,44 @@ pipeline {
   }
 }
 
+def precheckImageBuild() {
+  def msg = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+  if (msg ==~ /(?i)^ci:\s*bump\b.*/ || msg.contains('[skip ci]')) {
+    env.SKIP_IMAGE_BUILD = 'true'
+    currentBuild.description = 'Skipped: commit CI bump env (không đổi *-service/)'
+    echo "SKIP build: commit Jenkins bump env — '${msg}'"
+    return
+  }
+  if (params.BUILD_SERVICES == 'auto') {
+    def detected = sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
+    if (!detected) {
+      env.SKIP_IMAGE_BUILD = 'true'
+      currentBuild.description = 'Skipped: auto — không có *-service/ hoặc client/ trong commit'
+      echo 'SKIP build: BUILD_SERVICES=auto nhưng commit không sửa product-service/, order-service/, client/, …'
+      sh 'git show -1 --name-only --pretty=format:"  %h %s"'
+      return
+    }
+    echo "auto → build: ${detected}"
+  }
+  env.SKIP_IMAGE_BUILD = 'false'
+}
+
+def resolveBuildServicesList() {
+  def allSvcs = 'product inventory order payment noti client'
+  if (params.BUILD_SERVICES == 'all') {
+    return allSvcs
+  }
+  if (params.BUILD_SERVICES == 'auto') {
+    return sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
+  }
+  return params.BUILD_SERVICES?.trim() ?: ''
+}
+
 def runImageBuildSteps() {
   def envFile = "env/${params.TARGET_ENV}.yaml"
-  def allSvcs = 'product inventory order payment noti client'
-  def svcs = (params.BUILD_SERVICES == 'all') ? allSvcs
-    : (params.BUILD_SERVICES == 'auto') ? sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
-    : params.BUILD_SERVICES
+  def svcs = resolveBuildServicesList()
   if (!svcs?.trim()) {
-    if (params.BUILD_SERVICES == 'auto') {
-      echo "BUILD_SERVICES=auto: commit không sửa */service/ → fallback build ALL (${allSvcs})"
-      svcs = allSvcs
-    } else {
-      error("BUILD_SERVICES='${params.BUILD_SERVICES}' không hợp lệ hoặc rỗng.")
-    }
+    error("BUILD_SERVICES='${params.BUILD_SERVICES}' — không có service nào để build.")
   }
   withCredentials([usernamePassword(
     credentialsId: 'dockerhub-credentials',
@@ -357,7 +399,7 @@ def runCiGitPushSteps() {
         echo 'Nothing to commit'
         exit 0
       fi
-      git commit -m 'ci: bump tags in ${envFile} #${env.BUILD_NUMBER}'
+      git commit -m 'ci: bump tags in ${envFile} [skip ci] #${env.BUILD_NUMBER}'
       git push 'https://x-access-token:${GH_TOKEN}@github.com/minhtri1612/go-micro.git' 'HEAD:${params.GIT_BRANCH}'
     """
   }

@@ -40,7 +40,7 @@ if git rev-parse --verify "${BASE}^{commit}" >/dev/null 2>&1; then
 fi
 
 if [[ ${#s[@]} -eq 0 ]]; then
-  echo "DEBUG: commit $(git rev-parse --short HEAD) — không có */service/ trong:" >&2
+  echo "DEBUG: commit $(git rev-parse --short HEAD) — không có *-service/ hoặc client/ trong:" >&2
   git show -1 --name-only --pretty=format:'  %h %s' "$HEAD" 2>/dev/null | sed 's/^/  /' >&2
   exit 0
 fi

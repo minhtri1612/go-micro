@@ -2,40 +2,29 @@
 
 ## Việc của bạn
 
-1. Sửa code (vd. `order-service/`)
-2. `git push main`
-3. Jenkins: `build-only`, **`BUILD_SERVICES=all`** (mặc định), `PUSH_GIT=true` — build 6 service + client. Dùng `auto` chỉ khi commit có sửa code trong `*-service/`.
-4. Lần promote: Build với `PIPELINE_SCOPE=full`, `DEPENDENCY_SERVICES` / `BUSINESS_SERVICES` / `ROLLOUT_SERVICE` = service vừa đổi → Promote
+1. Sửa code trong **một** service (vd. `order-service/`)
+2. `git push main` — Jenkins poll SCM (~5 phút), mặc định **`BUILD_SERVICES=auto`**
+3. Chỉ service đó được bump + build + push Hub + push `env/dev.yaml`
+4. **Promote** (tách bước): `PIPELINE_SCOPE=full`, `ROLLOUT_SERVICE` = service vừa deploy (vd. `order`) → test → Promote
 
-## Jenkins tự làm (build-only)
+`build-only` **không có** Promote — đó là đúng thiết kế.
 
-- `detect-changed-services.sh` — service nào có diff (`order-service/**` → `order`)
-- `bump-image-tag.sh` — đọc tag trong `env/dev.yaml`, **+1 patch** (vd. `order-service-v1.0.4` → `v1.0.5`)
-- `docker-build-push.sh` — push `minhtri1612/go-microservice:<tag>`
-- `git push` — cập nhật `env/dev.yaml` trên GitHub → Argo dev sync
+## Jenkins tự làm (build-only + auto)
 
-**Không sửa `env/` tay.**
+- `detect-changed-services.sh` — file trong commit thuộc `*-service/` hoặc `client/`
+- Chỉ service đó: `bump-image-tag.sh` (+1 patch) → `docker-build-push.sh` → `git push` env
+- Commit message `ci: bump tags … [skip ci]` → **không** build lại (tránh vòng poll SCM)
 
-## `BUILD_SERVICES=auto`
+## Khi nào **không** bump tag
 
-- Commit có `product-service/`, `order-service/`, … → chỉ build service đó.
-- Commit **chỉ** Jenkinsfile / `scripts/ci/` → **fallback build all** (6 service + client), không fail.
+- Commit chỉ Jenkinsfile / `scripts/ci/` / `env/` (không có `order-service/`, …)
+- Commit do Jenkins push (`ci: bump …`)
+- Dùng `BUILD_SERVICES=all` thủ công nếu cần rebuild cả 6 service + client
 
 ## Tag baseline
 
-`env/dev.yaml` khớp Hub hiện tại (`v1.0.3`). Lần build tiếp theo cho `order` → `order-service-v1.0.4`, lần sau `v1.0.5`, …
+`env/dev.yaml` là source of truth cho Argo. Chỉ tăng patch khi **có build** service đó.
 
-## Credentials (setup từ đầu — không UI)
+## Credentials
 
-```bash
-cp scripts/jenkins-ci.env.example scripts/jenkins-ci.env
-# Điền DOCKERHUB_TOKEN (Hub) + GITHUB_PAT — KHÔNG dùng AWS key ESO
-source scripts/jenkins-ci.env && bash scripts/jenkins-setup-ci-secrets.sh
-argocd app sync jenkins-management
-kubectl -n jenkins delete pod jenkins-management-0
-```
-
-JCasC tạo ID:
-
-- `dockerhub-credentials`
-- `github-go-micro-pat` (push Git)
+Xem `scripts/jenkins-ci.env.example` + `bash scripts/jenkins-setup-ci-secrets.sh`
