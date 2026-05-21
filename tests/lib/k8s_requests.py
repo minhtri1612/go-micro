@@ -83,10 +83,6 @@ class K8sClient:
             params["labelSelector"] = label_selector
         return self.get(path, params=params)
 
-    def get_nodes(self):
-        path = "/api/v1/nodes"
-        return self.get(path)
-
     def is_pod_ready(self, pod_json):
         status = pod_json.get("status", {})
         if status.get("phase") != "Running":
