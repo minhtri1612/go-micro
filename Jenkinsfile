@@ -1,6 +1,6 @@
-// External quality gate pipeline: dependency/business/route smoke + k6.
-// Agent cần: curl, sh; stage k6 cần Docker (CLI + quyền chạy docker run) hoặc tự đổi stage sang image có sẵn k6.
-// Bốn stage test chạy song song (Declarative parallel); trong Dependency/Business các service chạy tuần tự để Blue Ocean không vẽ nhầm thành chuỗi tuần tự (tránh lồng script { parallel }).
+// Một pipeline: (tuỳ scope) build/push image DinD → quality gate → promote rollout.
+// Credentials: dockerhub-credentials, github-go-micro-pat (khi PUSH_GIT).
+// Agent: built-in + DinD sidecar (jenkins-values); k6 stage cần docker CLI.
 
 pipeline {
   agent {
@@ -19,9 +19,17 @@ pipeline {
   parameters {
     choice(
       name: 'PIPELINE_SCOPE',
-      choices: ['full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'],
-      description: '`full` = Prepare + mọi stage + Promote (nếu bật). `*-only` = chỉ Prepare + đúng một nhóm test; bỏ qua Promote (không đụng rollout).'
+      choices: ['build-only', 'build-and-full', 'full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'],
+      description: '`build-only` = docker build/push + bump env (DinD). `build-and-full` = build rồi test+promote như `full`. `full` = chỉ test+promote. `*-only` = một nhóm test.'
     )
+    choice(name: 'TARGET_ENV', choices: ['dev', 'staging'], description: 'env/<TARGET_ENV>.yaml — dùng khi scope có build.')
+    choice(
+      name: 'BUILD_SERVICES',
+      choices: ['auto', 'all', 'product', 'inventory', 'order', 'payment', 'noti', 'client'],
+      description: 'Service build image (`auto` = git diff).'
+    )
+    booleanParam(name: 'PUSH_GIT', defaultValue: false, description: 'Sau build: commit + push env file (Argo sync).')
+    string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Branch push Git sau build.')
     string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
     string(name: 'DEV_TEST_SERVICE_ACCOUNT', defaultValue: 'go-micro-test-runner', description: 'ServiceAccount dùng cho pod test (cần có quyền list nodes cho K8s API node check).')
@@ -57,7 +65,44 @@ pipeline {
   }
 
   stages {
+    stage('Checkout') {
+      when {
+        expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
+      }
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Build & push images') {
+      when {
+        expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
+      }
+      steps {
+        script {
+          runImageBuildSteps()
+        }
+      }
+    }
+
+    stage('Push Git') {
+      when {
+        allOf {
+          expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
+          expression { params.PUSH_GIT == true }
+        }
+      }
+      steps {
+        script {
+          runCiGitPushSteps()
+        }
+      }
+    }
+
     stage('Prepare') {
+      when {
+        expression { params.PIPELINE_SCOPE != 'build-only' }
+      }
       steps {
         sh 'kubectl version --client'
         script {
@@ -75,7 +120,7 @@ pipeline {
       when {
         allOf {
           expression { params.ENABLE_K8S_NODE_CHECK == true }
-          expression { params.PIPELINE_SCOPE != 'load-only' }
+          expression { params.PIPELINE_SCOPE != 'load-only' && params.PIPELINE_SCOPE != 'build-only' }
         }
       }
       steps {
@@ -89,7 +134,7 @@ pipeline {
     // Chỉ `full` mới dùng Declarative parallel (4 nhánh). `*-only` chạy một stage riêng — tránh log/CPS rối (mọi nhánh skipped trừ một).
     stage('Parallel tests') {
       when {
-        expression { params.PIPELINE_SCOPE == 'full' }
+        expression { params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' }
       }
       parallel {
         stage('Dependency Check') {
@@ -129,7 +174,7 @@ pipeline {
     stage('Rollout Decision Gate') {
       when {
         allOf {
-          expression { params.PIPELINE_SCOPE == 'full' }
+          expression { params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' }
           expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
           expression { params.AUTO_PROMOTE == false && params.ENABLE_MANUAL_ROLLOUT_GATE == true }
         }
@@ -215,7 +260,7 @@ pipeline {
     stage('Promote Rollout') {
       when {
         allOf {
-          expression { params.PIPELINE_SCOPE == 'full' }
+          expression { params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' }
           expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
           expression { params.AUTO_PROMOTE == true }
         }
@@ -232,9 +277,10 @@ pipeline {
   post {
     failure {
       script {
-        if (params.PIPELINE_SCOPE == 'full' && params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
+        def fullScope = (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full')
+        if (fullScope && params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
           runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
-        } else if (params.PIPELINE_SCOPE == 'full' && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
+        } else if (fullScope && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
           def failDecision = params.ON_FAILURE_MANUAL_ACTION ?: 'Rollback now'
           def rawFail = null
           timeout(time: 20, unit: 'MINUTES') {
@@ -262,6 +308,51 @@ pipeline {
     always {
       deleteDir()
     }
+  }
+}
+
+def runImageBuildSteps() {
+  def envFile = "env/${params.TARGET_ENV}.yaml"
+  def svcs = (params.BUILD_SERVICES == 'all') ? 'product inventory order payment noti client'
+    : (params.BUILD_SERVICES == 'auto') ? sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
+    : params.BUILD_SERVICES
+  if (!svcs?.trim()) {
+    echo 'No services to build.'
+    return
+  }
+  withCredentials([usernamePassword(
+    credentialsId: 'dockerhub-credentials',
+    usernameVariable: 'DOCKER_USER',
+    passwordVariable: 'DOCKER_PASS'
+  )]) {
+    sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+    svcs.split(/\s+/).each { svc ->
+      def tag = sh(script: "bash scripts/ci/bump-image-tag.sh '${envFile}' '${svc}'", returnStdout: true).trim()
+      echo "${svc} → ${tag}"
+      sh "bash scripts/ci/docker-build-push.sh '${svc}' '${tag}'"
+    }
+  }
+}
+
+def runCiGitPushSteps() {
+  def envFile = "env/${params.TARGET_ENV}.yaml"
+  withCredentials([usernamePassword(
+    credentialsId: 'github-go-micro-pat',
+    usernameVariable: 'GH_USER',
+    passwordVariable: 'GH_TOKEN'
+  )]) {
+    sh """
+      set -e
+      git config user.email 'jenkins@go-micro.local'
+      git config user.name 'jenkins-ci'
+      git add '${envFile}'
+      if git diff --cached --quiet; then
+        echo 'Nothing to commit'
+        exit 0
+      fi
+      git commit -m 'ci: bump tags in ${envFile} #${env.BUILD_NUMBER}'
+      git push 'https://x-access-token:${GH_TOKEN}@github.com/minhtri1612/go-micro.git' 'HEAD:${params.GIT_BRANCH}'
+    """
   }
 }
 

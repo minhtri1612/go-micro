@@ -3,8 +3,31 @@
 controller:
   image:
     repository: minhtri1612/jenkins-custom
-    tag: "2.492.3-lts-jdk17-pkg6"
+    tag: "2.492.3-lts-jdk17-pkg7"
     pullPolicy: IfNotPresent
+
+  containerEnv:
+    - name: DOCKER_HOST
+      value: tcp://127.0.0.1:2375
+
+  # Docker-in-Docker: daemon trong pod, Jenkins chỉ cần docker CLI (image pkg7+).
+  sidecars:
+    additionalSidecarContainers:
+      - name: dind
+        image: docker:27.5.1-dind
+        command: ["dockerd", "--host=tcp://0.0.0.0:2375", "--tls=false"]
+        securityContext:
+          privileged: true
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
+        volumeMounts:
+          - name: dind-storage
+            mountPath: /var/lib/docker
 
   admin:
     username: "admin"
@@ -53,9 +76,9 @@ controller:
           - script: |
               pipelineJob('go-micro') {
                 displayName('go-micro (GitHub)')
+                triggers { scm('H/5 * * * *') }
                 definition {
                   cpsScm {
-                    lightweight(true)
                     scm {
                       git {
                         remote {
@@ -92,6 +115,8 @@ persistence:
         items:
           - key: config
             path: config
+    - name: dind-storage
+      emptyDir: {}
   mounts:
     - name: kubeconfig
       mountPath: /var/jenkins_home/.kube/config

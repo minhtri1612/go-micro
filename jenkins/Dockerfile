@@ -1,6 +1,6 @@
 # Jenkins controller có plugin đóng gói sẵn — cluster không cần init tải plugin mỗi lần pod lên.
 # Build & push Hub (chạy từ ROOT repo go-micro):
-#   docker build -t minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg6 -f jenkins/Dockerfile jenkins
+#   docker build -t minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg7 -f jenkins/Dockerfile jenkins
 # Hoặc đã cd vào thư mục jenkins/:
 #   docker build -t minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg6 -f Dockerfile .
 #   docker push minhtri1612/jenkins-custom:2.492.3-lts-jdk17-pkg6
@@ -15,10 +15,15 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends curl ca-certificates \
   && curl -fsSL "https://dl.k8s.io/release/v1.28.15/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
   && curl -fsSL "https://github.com/argoproj/argo-rollouts/releases/download/v1.8.3/kubectl-argo-rollouts-linux-amd64" -o /usr/local/bin/kubectl-argo-rollouts \
-  && chmod +x /usr/local/bin/kubectl \
-  && chmod +x /usr/local/bin/kubectl-argo-rollouts \
+  && curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz" -o /tmp/docker.tgz \
+  && tar -xzf /tmp/docker.tgz -C /tmp && mv /tmp/docker/docker /usr/local/bin/docker \
+  && chmod +x /usr/local/bin/docker /usr/local/bin/kubectl /usr/local/bin/kubectl-argo-rollouts \
+  && rm -rf /tmp/docker.tgz /tmp/docker \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
+
+# DinD sidecar trong jenkins-values (DOCKER_HOST → daemon trong cùng pod).
+ENV DOCKER_HOST=tcp://127.0.0.1:2375
 
 USER jenkins
 
