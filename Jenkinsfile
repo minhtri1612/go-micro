@@ -315,23 +315,17 @@ pipeline {
 
 def runImageBuildSteps() {
   def envFile = "env/${params.TARGET_ENV}.yaml"
-  def svcs = (params.BUILD_SERVICES == 'all') ? 'product inventory order payment noti client'
+  def allSvcs = 'product inventory order payment noti client'
+  def svcs = (params.BUILD_SERVICES == 'all') ? allSvcs
     : (params.BUILD_SERVICES == 'auto') ? sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
     : params.BUILD_SERVICES
   if (!svcs?.trim()) {
-    def changed = sh(
-      script: '''
-        git diff --name-only HEAD~1 HEAD 2>/dev/null || true
-        git log -1 --name-only --pretty=format:commit:%h%n HEAD 2>/dev/null | tail -n +2
-      ''',
-      returnStdout: true
-    ).trim()
-    echo "BUILD_SERVICES=auto — không map được service nào. Files trong commit:\n${changed ?: '(empty)'}"
-    error(
-      "BUILD_SERVICES=auto: commit ${env.GIT_COMMIT ?: 'HEAD'} không sửa product-service/, order-service/, …\n" +
-      'Commit này chỉ có file CI (Jenkinsfile, scripts/ci/, …).\n' +
-      '→ Chọn BUILD_SERVICES=all để build toàn bộ, hoặc git add <tên>-service/ rồi push.'
-    )
+    if (params.BUILD_SERVICES == 'auto') {
+      echo "BUILD_SERVICES=auto: commit không sửa */service/ → fallback build ALL (${allSvcs})"
+      svcs = allSvcs
+    } else {
+      error("BUILD_SERVICES='${params.BUILD_SERVICES}' không hợp lệ hoặc rỗng.")
+    }
   }
   withCredentials([usernamePassword(
     credentialsId: 'dockerhub-credentials',

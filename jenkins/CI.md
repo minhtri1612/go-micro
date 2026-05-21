@@ -16,12 +16,10 @@
 
 **Không sửa `env/` tay.**
 
-## `No services to build` / SUCCESS nhưng không làm gì
+## `BUILD_SERVICES=auto`
 
-`BUILD_SERVICES=auto` chỉ nhìn diff **code service** (`order-service/**`, …). Commit chỉ đổi `env/`, `jenkins/`, `Jenkinsfile` → **không build** (đúng).
-
-- Commit trên GitHub **phải có** file `order-service/...` (`git show --name-only -1`). Message "fix order" nhưng chỉ push Jenkinsfile → auto **không** build order.
-- Hoặc Build tay: `BUILD_SERVICES=order`
+- Commit có `product-service/`, `order-service/`, … → chỉ build service đó.
+- Commit **chỉ** Jenkinsfile / `scripts/ci/` → **fallback build all** (6 service + client), không fail.
 
 ## Tag baseline
 
