@@ -16,6 +16,13 @@
 
 **Không sửa `env/` tay.**
 
+## `No services to build` / SUCCESS nhưng không làm gì
+
+`BUILD_SERVICES=auto` chỉ nhìn diff **code service** (`order-service/**`, …). Commit chỉ đổi `env/`, `jenkins/`, `Jenkinsfile` → **không build** (đúng).
+
+- Push commit có sửa `order-service/...`, hoặc
+- Build tay: `BUILD_SERVICES=order` (không dùng auto)
+
 ## Tag baseline
 
 `env/dev.yaml` khớp Hub hiện tại (`v1.0.3`). Lần build tiếp theo cho `order` → `order-service-v1.0.4`, lần sau `v1.0.5`, …

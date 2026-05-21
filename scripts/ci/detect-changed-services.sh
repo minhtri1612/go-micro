@@ -25,4 +25,11 @@ while read -r p; do
     go.mod|go.sum) for x in product inventory order payment noti; do s[$x]=1; done ;;
   esac
 done < <(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || true)
+
+if [[ ${#s[@]} -eq 0 ]]; then
+  echo "DEBUG: BASE=$BASE HEAD=$HEAD" >&2
+  echo "DEBUG: files changed (không thuộc */service/):" >&2
+  git diff --name-only "$BASE" "$HEAD" 2>/dev/null | sed 's/^/  /' >&2 || true
+  exit 0
+fi
 for k in "${!s[@]}"; do echo "$k"; done | sort

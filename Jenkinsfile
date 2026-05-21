@@ -319,8 +319,18 @@ def runImageBuildSteps() {
     : (params.BUILD_SERVICES == 'auto') ? sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
     : params.BUILD_SERVICES
   if (!svcs?.trim()) {
-    echo 'No services to build.'
-    return
+    def changed = sh(
+      script: '''
+        git diff --name-only HEAD~1 HEAD 2>/dev/null || true
+        git log -1 --name-only --pretty=format:commit:%h%n HEAD 2>/dev/null | tail -n +2
+      ''',
+      returnStdout: true
+    ).trim()
+    echo "BUILD_SERVICES=auto — không map được service nào. Files trong commit:\n${changed ?: '(empty)'}"
+    error(
+      'Không build: commit này không sửa product-service/, order-service/, payment-service/, … ' +
+      'Chọn BUILD_SERVICES=<tên> (vd. order) hoặc git push commit có đổi code Go trong thư mục service.'
+    )
   }
   withCredentials([usernamePassword(
     credentialsId: 'dockerhub-credentials',
