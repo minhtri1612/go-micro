@@ -20,8 +20,8 @@
 
 `BUILD_SERVICES=auto` chỉ nhìn diff **code service** (`order-service/**`, …). Commit chỉ đổi `env/`, `jenkins/`, `Jenkinsfile` → **không build** (đúng).
 
-- Push commit có sửa `order-service/...`, hoặc
-- Build tay: `BUILD_SERVICES=order` (không dùng auto)
+- Commit trên GitHub **phải có** file `order-service/...` (`git show --name-only -1`). Message "fix order" nhưng chỉ push Jenkinsfile → auto **không** build order.
+- Hoặc Build tay: `BUILD_SERVICES=order`
 
 ## Tag baseline
 

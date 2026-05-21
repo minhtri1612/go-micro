@@ -328,8 +328,9 @@ def runImageBuildSteps() {
     ).trim()
     echo "BUILD_SERVICES=auto — không map được service nào. Files trong commit:\n${changed ?: '(empty)'}"
     error(
-      'Không build: commit này không sửa product-service/, order-service/, payment-service/, … ' +
-      'Chọn BUILD_SERVICES=<tên> (vd. order) hoặc git push commit có đổi code Go trong thư mục service.'
+      "Không build: commit ${env.GIT_COMMIT ?: 'HEAD'} không có file trong order-service/, product-service/, …\n" +
+      'Kiểm tra trên máy: git show --name-only -1\n' +
+      'Hoặc Build với BUILD_SERVICES=order (chọn tay, không dùng auto).'
     )
   }
   withCredentials([usernamePassword(

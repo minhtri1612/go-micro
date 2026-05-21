@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
+# In ra tên service (product, order, …) cần build.
+# BUILD_SERVICES=auto: file trong commit HEAD + diff HEAD~1..HEAD (union).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
+
 if [[ -n "${FORCE_SERVICES:-}" ]]; then
   tr ',' '\n' <<< "${FORCE_SERVICES// /}"
   exit 0
 fi
-# Commit vừa push: so sánh với parent. Jenkins BUILD_SERVICES=auto dùng cặp này.
-BASE="${BASE_REF:-HEAD~1}"
+
 HEAD="${HEAD_REF:-HEAD}"
-if [[ -n "${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-}" ]] && git rev-parse --verify "$GIT_PREVIOUS_SUCCESSFUL_COMMIT" >/dev/null 2>&1; then
-  BASE="$GIT_PREVIOUS_SUCCESSFUL_COMMIT"
-fi
-git rev-parse --verify "$BASE" >/dev/null 2>&1 || { echo "product inventory order payment noti client"; exit 0; }
+BASE="${BASE_REF:-HEAD~1}"
+
 declare -A s=()
-while read -r p; do
+add_path() {
+  local p="$1"
   case "$p" in
     product-service/*) s[product]=1 ;;
     inventory-service/*) s[inventory]=1 ;;
@@ -24,12 +25,24 @@ while read -r p; do
     client/*) s[client]=1 ;;
     go.mod|go.sum) for x in product inventory order payment noti; do s[$x]=1; done ;;
   esac
-done < <(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || true)
+}
+
+# Mọi file touched trong commit hiện tại (đúng nghĩa "vừa git push")
+while read -r p; do
+  [[ -n "$p" ]] && add_path "$p"
+done < <(git show -1 --name-only --pretty=format: "$HEAD" 2>/dev/null || true)
+
+# Thêm diff so với parent (phòng merge / amend)
+if git rev-parse --verify "${BASE}^{commit}" >/dev/null 2>&1; then
+  while read -r p; do
+    [[ -n "$p" ]] && add_path "$p"
+  done < <(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || true)
+fi
 
 if [[ ${#s[@]} -eq 0 ]]; then
-  echo "DEBUG: BASE=$BASE HEAD=$HEAD" >&2
-  echo "DEBUG: files changed (không thuộc */service/):" >&2
-  git diff --name-only "$BASE" "$HEAD" 2>/dev/null | sed 's/^/  /' >&2 || true
+  echo "DEBUG: commit $(git rev-parse --short HEAD) — không có */service/ trong:" >&2
+  git show -1 --name-only --pretty=format:'  %h %s' "$HEAD" 2>/dev/null | sed 's/^/  /' >&2
   exit 0
 fi
+
 for k in "${!s[@]}"; do echo "$k"; done | sort
