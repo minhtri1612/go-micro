@@ -1,40 +1,48 @@
 #!/usr/bin/env bash
 # Usage: bump-image-tag.sh <env-file> <service>
+# Pure bash — Jenkins controller image has no python3.
 set -euo pipefail
-python3 - "$1" "$2" <<'PY'
-import re, sys
-from pathlib import Path
 
-path = Path(sys.argv[1])
-service = sys.argv[2]
-lines = path.read_text().splitlines(keepends=True)
-key = f"{service}:"
-in_block = False
-new_tag = None
-out = []
+env_file="${1:?env file}"
+service="${2:?service name}"
+key="${service}:"
 
-for line in lines:
-    if re.match(rf'^{re.escape(key)}\s*$', line):
-        in_block = True
-        out.append(line)
-        continue
-    if in_block and re.match(r'^[a-zA-Z0-9_-]+:\s*$', line):
-        in_block = False
-    if in_block:
-        m = re.match(r'^(\s+tag:\s+)"([^"]+)"\s*$', line)
-        if m and new_tag is None:
-            old = m.group(2)
-            m2 = re.match(r'^(.*?-v)(\d+)\.(\d+)\.(\d+)$', old)
-            if not m2:
-                raise SystemExit(f"Cannot parse tag: {old}")
-            p, a, b, c = m2.groups()
-            new_tag = f"{p}{a}.{b}.{int(c)+1}"
-            out.append(f'{m.group(1)}"{new_tag}"\n')
-            continue
-    out.append(line)
+in_block=false
+new_tag=""
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
 
-if not new_tag:
-    raise SystemExit(f"No tag under {key}")
-path.write_text("".join(out))
-print(new_tag)
-PY
+while IFS= read -r line || [[ -n "$line" ]]; do
+  if [[ "$line" == "${key}" ]]; then
+    in_block=true
+    printf '%s\n' "$line" >>"$tmp"
+    continue
+  fi
+
+  if [[ "$in_block" == true ]] && [[ "$line" =~ ^[a-zA-Z0-9_-]+:[[:space:]]*$ ]]; then
+    in_block=false
+  fi
+
+  if [[ "$in_block" == true ]] && [[ -z "$new_tag" ]] && [[ "$line" =~ ^[[:space:]]+tag:[[:space:]]+\"([^\"]+)\"[[:space:]]*$ ]]; then
+    indent="${line%%\"*}"
+    old="${BASH_REMATCH[1]}"
+    if [[ "$old" =~ ^(.*-v)([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+      new_tag="${BASH_REMATCH[1]}${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.$((${BASH_REMATCH[4]} + 1))"
+      printf '%s"%s"\n' "$indent" "$new_tag" >>"$tmp"
+      continue
+    fi
+    echo "Cannot parse tag: $old" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$line" >>"$tmp"
+done <"$env_file"
+
+if [[ -z "$new_tag" ]]; then
+  echo "No tag under ${key}" >&2
+  exit 1
+fi
+
+mv "$tmp" "$env_file"
+trap - EXIT
+printf '%s\n' "$new_tag"
