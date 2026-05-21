@@ -104,12 +104,18 @@ Application: `argocd/bootstrap/22-jenkins-mgmt.yaml` → Service **`jenkins-mana
 Job mẫu **go-micro** (kết nối GitHub) được khai báo bằng **JCasC + Job DSL** trong `jenkins/jenkins-values.yaml` (`configScripts`); pipeline thật nằm ở **`Jenkinsfile`** ở root repo. Repo **private** cần thêm **credentials** trong JCasC + `remote { credentials('id') }` (không commit token).
 
 > [!IMPORTANT]
-> **Bắt buộc phải tạo Secret `jenkins-internal-kubeconfig` trước khi deploy/sync Jenkins**, nếu không pod sẽ bị kẹt ở trạng thái `Pending` / `FailedMount` do không mount được volume kubeconfig. Chạy script tạo secret dưới đây:
+> **Bắt buộc** trước khi deploy/sync Jenkins:
+> 1. Secret `jenkins-internal-kubeconfig` (kubeconfig)
+> 2. Secret `jenkins-ci-env` (Docker Hub + GitHub PAT cho pipeline — **không** dùng AWS key ESO)
 
 ```bash
 kubectl config use-context kind-management
-# Tạo Secret kubeconfig nội bộ cho Jenkins (chạy từ root repo)
 bash scripts/jenkins-generate-internal-kubeconfig.sh
+
+# CI credentials (KHÁC ESO aws-credentials — xem scripts/jenkins-ci.env.example)
+cp scripts/jenkins-ci.env.example scripts/jenkins-ci.env
+# Sửa: DOCKERHUB_TOKEN = Hub Access Token; GITHUB_PAT = GitHub PAT
+source scripts/jenkins-ci.env && bash scripts/jenkins-setup-ci-secrets.sh
 
 kubectl apply -f argocd/bootstrap/22-jenkins-mgmt.yaml
 argocd --grpc-web app sync jenkins-management && argocd --grpc-web app wait jenkins-management --sync --timeout 300

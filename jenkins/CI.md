@@ -25,7 +25,17 @@
 
 `env/dev.yaml` khớp Hub hiện tại (`v1.0.3`). Lần build tiếp theo cho `order` → `order-service-v1.0.4`, lần sau `v1.0.5`, …
 
-## Credentials Jenkins
+## Credentials (setup từ đầu — không UI)
+
+```bash
+cp scripts/jenkins-ci.env.example scripts/jenkins-ci.env
+# Điền DOCKERHUB_TOKEN (Hub) + GITHUB_PAT — KHÔNG dùng AWS key ESO
+source scripts/jenkins-ci.env && bash scripts/jenkins-setup-ci-secrets.sh
+argocd app sync jenkins-management
+kubectl -n jenkins delete pod jenkins-management-0
+```
+
+JCasC tạo ID:
 
 - `dockerhub-credentials`
 - `github-go-micro-pat` (push Git)

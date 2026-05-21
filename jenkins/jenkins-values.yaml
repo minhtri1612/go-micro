@@ -15,6 +15,12 @@ controller:
     - name: DOCKER_HOST
       value: tcp://127.0.0.1:2375
 
+  # Secret jenkins-ci-env: bash scripts/jenkins-setup-ci-secrets.sh (trước hoặc sau sync Jenkins)
+  containerEnvFrom:
+    - secretRef:
+        name: jenkins-ci-env
+        optional: true
+
   # DinD: sidecar chạy root (runAsUser 0), Jenkins gọi qua DOCKER_HOST.
   sidecars:
     additionalSidecarContainers:
@@ -98,6 +104,24 @@ controller:
                   }
                 }
               }
+
+      02-ci-credentials: |
+        credentials:
+          system:
+            domainCredentials:
+            - credentials:
+              - usernamePassword:
+                  scope: GLOBAL
+                  id: dockerhub-credentials
+                  username: "${DOCKERHUB_USER}"
+                  password: "${DOCKERHUB_PASSWORD}"
+                  description: Docker Hub push (from Secret jenkins-ci-env)
+              - usernamePassword:
+                  scope: GLOBAL
+                  id: github-go-micro-pat
+                  username: "${GITHUB_USER}"
+                  password: "${GITHUB_PAT}"
+                  description: Git push env/*.yaml (from Secret jenkins-ci-env)
 
   resources:
     requests:
