@@ -6,18 +6,25 @@ controller:
     tag: "2.492.3-lts-jdk17-pkg7"
     pullPolicy: IfNotPresent
 
+  # Chart mặc định pod runAsNonRoot:true → dockerd trong dind không chạy được (Argo Progressing mãi).
+  # Bỏ runAsNonRoot ở pod; jenkins container vẫn uid 1000 qua containerSecurityContext của chart.
+  podSecurityContextOverride:
+    fsGroup: 1000
+
   containerEnv:
     - name: DOCKER_HOST
       value: tcp://127.0.0.1:2375
 
-  # Docker-in-Docker: daemon trong pod, Jenkins chỉ cần docker CLI (image pkg7+).
+  # DinD: sidecar chạy root (runAsUser 0), Jenkins gọi qua DOCKER_HOST.
   sidecars:
     additionalSidecarContainers:
       - name: dind
         image: docker:27.5.1-dind
-        command: ["dockerd", "--host=tcp://0.0.0.0:2375", "--tls=false"]
+        command: ["dockerd", "--host=tcp://0.0.0.0:2375", "--host=unix:///var/run/docker.sock", "--tls=false"]
         securityContext:
           privileged: true
+          runAsUser: 0
+          runAsNonRoot: false
         resources:
           requests:
             cpu: 200m
