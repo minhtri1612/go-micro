@@ -6,8 +6,12 @@ if [[ -n "${FORCE_SERVICES:-}" ]]; then
   tr ',' '\n' <<< "${FORCE_SERVICES// /}"
   exit 0
 fi
+# Commit vừa push: so sánh với parent. Jenkins BUILD_SERVICES=auto dùng cặp này.
 BASE="${BASE_REF:-HEAD~1}"
 HEAD="${HEAD_REF:-HEAD}"
+if [[ -n "${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-}" ]] && git rev-parse --verify "$GIT_PREVIOUS_SUCCESSFUL_COMMIT" >/dev/null 2>&1; then
+  BASE="$GIT_PREVIOUS_SUCCESSFUL_COMMIT"
+fi
 git rev-parse --verify "$BASE" >/dev/null 2>&1 || { echo "product inventory order payment noti client"; exit 0; }
 declare -A s=()
 while read -r p; do

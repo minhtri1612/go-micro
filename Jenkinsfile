@@ -1,6 +1,8 @@
-// Một pipeline: (tuỳ scope) build/push image DinD → quality gate → promote rollout.
-// Credentials: dockerhub-credentials, github-go-micro-pat (khi PUSH_GIT).
-// Agent: built-in + DinD sidecar (jenkins-values); k6 stage cần docker CLI.
+// Luồng lab:
+//   git push main → poll SCM (~5p) hoặc Build: PIPELINE_SCOPE=build-only, BUILD_SERVICES=auto, PUSH_GIT=true
+//     → detect service đổi → bump tag trong env/dev.yaml (+1 patch) → docker push Hub → git push env
+//   Promote: PIPELINE_SCOPE=full, chọn DEPENDENCY/BUSINESS/ROLLOUT = service vừa deploy → test → Promote
+// Credentials: dockerhub-credentials, github-go-micro-pat (bắt buộc cho PUSH_GIT).
 
 pipeline {
   agent {
@@ -20,15 +22,15 @@ pipeline {
     choice(
       name: 'PIPELINE_SCOPE',
       choices: ['build-only', 'build-and-full', 'full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'],
-      description: '`build-only` = docker build/push + bump env (DinD). `build-and-full` = build rồi test+promote như `full`. `full` = chỉ test+promote. `*-only` = một nhóm test.'
+      description: '`build-only` = auto detect + bump env + docker push + git push (sau git push code). `full` = test + promote (không build). `build-and-full` = cả hai.'
     )
     choice(name: 'TARGET_ENV', choices: ['dev', 'staging'], description: 'env/<TARGET_ENV>.yaml — dùng khi scope có build.')
     choice(
       name: 'BUILD_SERVICES',
       choices: ['auto', 'all', 'product', 'inventory', 'order', 'payment', 'noti', 'client'],
-      description: 'Service build image (`auto` = git diff).'
+      description: '`auto` = chỉ service có file đổi trong commit (product-service/, order-service/, …).'
     )
-    booleanParam(name: 'PUSH_GIT', defaultValue: false, description: 'Sau build: commit + push env file (Argo sync).')
+    booleanParam(name: 'PUSH_GIT', defaultValue: true, description: 'Sau build: commit + push env/<TARGET_ENV>.yaml lên Git (Argo sync tag mới).')
     string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Branch push Git sau build.')
     string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
