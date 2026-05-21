@@ -27,8 +27,8 @@ pipeline {
     choice(name: 'TARGET_ENV', choices: ['dev', 'staging'], description: 'env/<TARGET_ENV>.yaml — dùng khi scope có build.')
     choice(
       name: 'BUILD_SERVICES',
-      choices: ['auto', 'all', 'product', 'inventory', 'order', 'payment', 'noti', 'client'],
-      description: '`auto` = chỉ service có file đổi trong commit (product-service/, order-service/, …).'
+      choices: ['all', 'auto', 'product', 'inventory', 'order', 'payment', 'noti', 'client'],
+      description: '`all` = build 6 service + client (mặc định). `auto` = chỉ thư mục *-service/ có trong commit (commit chỉ Jenkinsfile → 0 service).'
     )
     booleanParam(name: 'PUSH_GIT', defaultValue: true, description: 'Sau build: commit + push env/<TARGET_ENV>.yaml lên Git (Argo sync tag mới).')
     string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Branch push Git sau build.')
@@ -328,9 +328,9 @@ def runImageBuildSteps() {
     ).trim()
     echo "BUILD_SERVICES=auto — không map được service nào. Files trong commit:\n${changed ?: '(empty)'}"
     error(
-      "Không build: commit ${env.GIT_COMMIT ?: 'HEAD'} không có file trong order-service/, product-service/, …\n" +
-      'Kiểm tra trên máy: git show --name-only -1\n' +
-      'Hoặc Build với BUILD_SERVICES=order (chọn tay, không dùng auto).'
+      "BUILD_SERVICES=auto: commit ${env.GIT_COMMIT ?: 'HEAD'} không sửa product-service/, order-service/, …\n" +
+      'Commit này chỉ có file CI (Jenkinsfile, scripts/ci/, …).\n' +
+      '→ Chọn BUILD_SERVICES=all để build toàn bộ, hoặc git add <tên>-service/ rồi push.'
     )
   }
   withCredentials([usernamePassword(

@@ -4,7 +4,7 @@
 
 1. Sửa code (vd. `order-service/`)
 2. `git push main`
-3. Jenkins tự chạy (poll ~5 phút) **hoặc** Build Now với mặc định: `build-only`, `BUILD_SERVICES=auto`, `PUSH_GIT=true`
+3. Jenkins: `build-only`, **`BUILD_SERVICES=all`** (mặc định), `PUSH_GIT=true` — build 6 service + client. Dùng `auto` chỉ khi commit có sửa code trong `*-service/`.
 4. Lần promote: Build với `PIPELINE_SCOPE=full`, `DEPENDENCY_SERVICES` / `BUSINESS_SERVICES` / `ROLLOUT_SERVICE` = service vừa đổi → Promote
 
 ## Jenkins tự làm (build-only)
