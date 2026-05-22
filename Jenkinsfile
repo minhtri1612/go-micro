@@ -443,12 +443,10 @@ def precheckPipeline() {
       handleEnvOnlyDeploy("env/${params.TARGET_ENV}.yaml")
       return
     }
-    env.SKIP_IMAGE_BUILD = 'true'
-    env.SKIP_QUALITY_GATES = 'true'
-    currentBuild.description = 'auto: skip (không service/env trong commit)'
-    echo 'SKIP: commit không đổi *-service/ hay env/ (vd. chỉ Jenkinsfile).'
-    echo 'Đã sửa env/dev.yaml trên Git? Bật DEPLOY_EXISTING_ENV_TAGS=true rồi Build lại.'
+    // Chỉ Jenkinsfile/scripts — skip build, VẪN chạy test+promote với tag trong env/ (không vứt Parallel tests).
+    echo 'auto: mode=none — commit không đổi *-service/ hay env/ trong diff; dùng tag hiện tại env/ + verify Hub.'
     sh 'git show -1 --name-only --pretty=format:"  %h %s"'
+    handleEnvOnlyDeploy("env/${params.TARGET_ENV}.yaml")
     return
   }
 

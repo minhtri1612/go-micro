@@ -12,9 +12,10 @@
 
 - Build **chỉ order** (bump tag) → nếu tag mới **đã có Hub** thì skip docker build → Push Git → test + promote
 
-## Commit chỉ Jenkinsfile
+## Commit chỉ Jenkinsfile / scripts/ci
 
-- `auto` → skip hết (SUCCESS). Muốn test lại tag trong env/: bật **`DEPLOY_EXISTING_ENV_TAGS=true`**.
+- `auto` → **skip build**, vẫn **chạy Parallel tests** với tag trong `env/dev.yaml` (verify Hub).
+- Hoặc bật **`DEPLOY_EXISTING_ENV_TAGS=true`** (cùng ý).
 
 ## Override
 
