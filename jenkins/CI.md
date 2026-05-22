@@ -1,28 +1,25 @@
-# CI — `PIPELINE_SCOPE=auto` (mặc định)
+# CI — `PIPELINE_SCOPE=auto`
 
-Jenkins **detect commit** — không cần chọn `build-only` vs `full` mỗi lần.
+## Chỉ sửa `env/dev.yaml` (tag đã build sẵn trên Hub, ví dụ rollback v1.0.3)
 
-## 1. Chỉ sửa `env/dev.yaml` (test tag GitOps)
+1. Push `env/dev.yaml` lên `main` **hoặc** đã push rồi → Jenkins Build:
+   - `PIPELINE_SCOPE=auto` **hoặc**
+   - bật **`DEPLOY_EXISTING_ENV_TAGS=true`** (khi commit hiện tại chỉ Jenkinsfile)
+2. Pipeline: **verify tag có trên Hub** → **skip** Build + Push Git → **chạy** Prepare + test + promote
+3. Argo sync Git (tag trong env/) — Jenkins không push Git lại nếu không build
 
-- **Skip:** Build & push images, Push Git  
-- **Chạy:** Prepare → test → promote gate  
-- Argo sync Git là đủ để cluster dùng tag mới  
+## Sửa code `order-service/`
 
-## 2. Sửa code `order-service/` (ví dụ)
+- Build **chỉ order** (bump tag) → nếu tag mới **đã có Hub** thì skip docker build → Push Git → test + promote
 
-- **Chạy:** Build & push **chỉ order** → bump tag order trong `env/dev.yaml` → Push Git  
-- **Rồi:** Prepare → test (auto chọn `order` nếu 1 service) → promote  
+## Commit chỉ Jenkinsfile
 
-## 3. Commit `ci: bump` / chỉ Jenkinsfile
+- `auto` → skip hết (SUCCESS). Muốn test lại tag trong env/: bật **`DEPLOY_EXISTING_ENV_TAGS=true`**.
 
-- **Skip** cả build lẫn test → SUCCESS  
+## Override
 
-## Override thủ công
-
-| Scope | Khi nào |
-|-------|---------|
+| Param / scope | Ý nghĩa |
+|---------------|---------|
+| `DEPLOY_EXISTING_ENV_TAGS` | Luôn dùng tag trong env/, verify Hub, test+promote |
 | `build-only` | Chỉ build, không test |
-| `full` | Chỉ test/promote, không build |
-| `build-and-full` | Luôn cả hai |
-
-`BUILD_SERVICES=all` chỉ khi rebuild cả 6 service + client.
+| `full` | Chỉ test/promote |

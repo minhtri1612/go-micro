@@ -93,6 +93,7 @@ controller:
                   choiceParam('PIPELINE_SCOPE', ['auto', 'build-only', 'build-and-full', 'full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'], 'auto = detect: env/ → test; *-service/ → build 1 service + test')
                   choiceParam('BUILD_SERVICES', ['auto', 'all', 'product', 'inventory', 'order', 'payment', 'noti', 'client'], 'auto = chỉ service đổi trong commit')
                   booleanParam('PUSH_GIT', true)
+                  booleanParam('DEPLOY_EXISTING_ENV_TAGS', false)
                 }
                 triggers { scm('H/5 * * * *') }
                 definition {

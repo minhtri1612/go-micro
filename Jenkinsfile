@@ -33,6 +33,11 @@ pipeline {
       description: '`auto` (mặc định) = chỉ *-service/ hoặc client/ đổi trong commit; không đổi → skip build. `all` = build cả 6+client (chỉ khi cần rebuild hàng loạt).'
     )
     booleanParam(name: 'PUSH_GIT', defaultValue: true, description: 'Sau build: commit + push env/<TARGET_ENV>.yaml lên Git (Argo sync tag mới).')
+    booleanParam(
+      name: 'DEPLOY_EXISTING_ENV_TAGS',
+      defaultValue: false,
+      description: 'Bỏ qua build/push Docker: dùng tag trong env/<TARGET_ENV>.yaml (phải có trên Hub). Chạy test+promote. Bật khi vừa rollback tag env/ (commit có thể chỉ Jenkinsfile).'
+    )
     string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Branch push Git sau build.')
     string(name: 'DEV_KUBE_CONTEXT', defaultValue: 'kind-dev', description: 'Kubernetes context của cụm dev để chạy pod test.')
     string(name: 'DEV_TEST_NAMESPACE', defaultValue: 'default', description: 'Namespace trên cụm dev để tạo pod test tạm.')
@@ -376,6 +381,27 @@ def getEffectiveBusinessServices() {
   return env.EFFECTIVE_BUSINESS_SERVICES?.trim() ?: params.BUSINESS_SERVICES
 }
 
+def handleEnvOnlyDeploy(String envFile) {
+  def changed = sh(script: "bash scripts/ci/detect-env-changed-services.sh '${envFile}'", returnStdout: true).trim()
+  if (!changed) {
+    changed = sh(script: "bash scripts/ci/list-env-app-services.sh '${envFile}'", returnStdout: true).trim()
+    echo "env/: kiểm tra Hub cho mọi app service trong ${envFile}"
+  }
+  echo "env deploy targets: ${changed}"
+  def verifyRc = sh(
+    script: "bash scripts/ci/verify-env-tags-on-hub.sh '${envFile}' ${changed.split(/\\s+/).findAll { it }.join(' ')}",
+    returnStatus: true
+  )
+  if (verifyRc != 0) {
+    error('Tag trong env/ chưa có trên Docker Hub — build image trước hoặc sửa tag cho đúng Hub.')
+  }
+  env.SKIP_IMAGE_BUILD = 'true'
+  env.SKIP_QUALITY_GATES = 'false'
+  applyAutoTestTargets(changed)
+  currentBuild.description = "env/ tags on Hub → test+promote [${changed}]"
+  echo 'Skip Build + Push Git (tag đã trên Hub). Đảm bảo Argo đã sync Git env/ → chạy test + promote.'
+}
+
 def applyAutoTestTargets(String detected) {
   def rolloutList = detected.split(/\s+/).collect { it.trim() }.findAll { it && it != 'client' }
   if (rolloutList.size() == 1) {
@@ -392,7 +418,11 @@ def precheckPipeline() {
   env.SKIP_QUALITY_GATES = 'false'
   env.DETECTED_SERVICES = ''
   if (params.PIPELINE_SCOPE == 'build-only') {
-    echo 'Gợi ý: commit chỉ Jenkinsfile/env → dùng PIPELINE_SCOPE=auto (không phải build-only).'
+    echo 'Gợi ý: commit chỉ Jenkinsfile/env → dùng PIPELINE_SCOPE=auto hoặc bật DEPLOY_EXISTING_ENV_TAGS.'
+  }
+  if (params.DEPLOY_EXISTING_ENV_TAGS == true || params.DEPLOY_EXISTING_ENV_TAGS == 'true') {
+    handleEnvOnlyDeploy("env/${params.TARGET_ENV}.yaml")
+    return
   }
   def msg = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
   if (msg ==~ /(?i)^ci:\s*bump\b.*/ || msg.contains('[skip ci]')) {
@@ -416,17 +446,14 @@ def precheckPipeline() {
       return
     }
     if (mode == 'env-only') {
-      env.SKIP_IMAGE_BUILD = 'true'
-      env.SKIP_QUALITY_GATES = 'false'
-      currentBuild.description = 'auto: env/ only — test (skip build)'
-      echo 'Chỉ env/* đổi → skip Build + Push Git; chạy Prepare + test. Argo sync Git.'
-      sh 'git show -1 --name-only --pretty=format:"  %h %s"'
+      handleEnvOnlyDeploy("env/${params.TARGET_ENV}.yaml")
       return
     }
     env.SKIP_IMAGE_BUILD = 'true'
     env.SKIP_QUALITY_GATES = 'true'
-    currentBuild.description = 'auto: skip (không service/env)'
-    echo 'SKIP: commit không đổi *-service/ hay env/'
+    currentBuild.description = 'auto: skip (không service/env trong commit)'
+    echo 'SKIP: commit không đổi *-service/ hay env/ (vd. chỉ Jenkinsfile).'
+    echo 'Đã sửa env/dev.yaml trên Git? Bật DEPLOY_EXISTING_ENV_TAGS=true rồi Build lại.'
     sh 'git show -1 --name-only --pretty=format:"  %h %s"'
     return
   }
@@ -487,7 +514,12 @@ def runImageBuildSteps() {
     svcs.split(/\s+/).each { svc ->
       def tag = sh(script: "bash scripts/ci/bump-image-tag.sh '${envFile}' '${svc}'", returnStdout: true).trim()
       echo "${svc} → ${tag}"
-      sh "bash scripts/ci/docker-build-push.sh '${svc}' '${tag}'"
+      def onHub = sh(script: "bash scripts/ci/image-exists-on-hub.sh '${tag}'", returnStatus: true) == 0
+      if (onHub) {
+        echo "${svc}: ${tag} đã có trên Hub — skip docker build/push"
+      } else {
+        sh "bash scripts/ci/docker-build-push.sh '${svc}' '${tag}'"
+      }
     }
   }
 }
