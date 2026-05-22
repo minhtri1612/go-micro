@@ -212,9 +212,12 @@ spec:
           readOnly: true
         {{- end }}
         {{- if $hasCfgFiles }}
+        {{- range $f := $cfgFiles }}
         - name: svc-config-files
-          mountPath: {{ $filesMount }}
+          mountPath: {{ $filesMount }}/{{ $f.name }}
+          subPath: {{ $f.name }}
           readOnly: true
+        {{- end }}
         {{- end }}
       {{- end }}
   {{- if or .Values.volumes (and .Values.runtimeConfig.enabled .Values.runtimeConfig.data) $hasCfgFiles }}
