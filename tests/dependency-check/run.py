@@ -22,6 +22,29 @@ def _inventory_available(resp_json):
     p = resp_json if isinstance(resp_json, dict) else {}
     return p.get("is_available") is True or p.get("available") is True
 
+
+def _parse_json(resp):
+    try:
+        return resp.json()
+    except Exception as e:
+        raise ValueError(
+            f"invalid JSON from {resp.url}: status={resp.status_code} body={resp.text[:300]!r}"
+        ) from e
+
+
+def _as_list(data, label="response"):
+    """API list hoặc null/{} — tránh len(None)."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ("products", "orders", "items", "data", "notifications", "payments", "inventory"):
+            val = data.get(key)
+            if isinstance(val, list):
+                return val
+    raise ValueError(f"{label}: expected list, got {type(data).__name__}: {str(data)[:200]}")
+
 def get_svc_prefix(service):
     prefixes = {
         "product": "/api/v1/products",
@@ -92,7 +115,8 @@ def main():
         if service == "product":
             # 1. GET /products
             resp = curl_retry(f"{base_url}/products", headers=headers)
-            print(f"[DBG] product list OK: {len(resp.json())} items found")
+            products = _as_list(_parse_json(resp), "GET /products")
+            print(f"[DBG] product list OK: {len(products)} items found")
 
             # 2. POST /products
             name = f"py-dep-{random.randint(1000, 9999)}"
@@ -179,7 +203,8 @@ def main():
 
             # 5. GET /orders
             resp = curl_retry(f"{o_base}/orders", headers=headers)
-            assert any(o.get('id') == order_id for o in resp.json()), "Created order not in list"
+            orders = _as_list(_parse_json(resp), "GET /orders")
+            assert any(o.get('id') == order_id for o in orders), "Created order not in list"
             print("[DBG] order dep list passed")
 
             # 6. GET /orders/:id
@@ -239,7 +264,8 @@ def main():
 
             # 3. GET /notifications
             resp = curl_retry(f"{base_url}/notifications", headers=headers)
-            assert any(n.get('id') == noti_id for n in resp.json()), "Notification not in list"
+            notifications = _as_list(_parse_json(resp), "GET /notifications")
+            assert any(n.get('id') == noti_id for n in notifications), "Notification not in list"
             print("[DBG] noti dep list passed")
 
             # 4. PUT /notifications/:id/deliver
