@@ -17,9 +17,7 @@ pipeline {
   environment {
     KUBECONFIG = '/var/jenkins_home/.kube/config'
     EFFECTIVE_EXECUTION_MODE = 'dev-pod'
-    SKIP_IMAGE_BUILD = 'false'
-    SKIP_QUALITY_GATES = 'false'
-    DETECTED_SERVICES = ''
+    // Không khai báo SKIP_* ở đây — Declarative environment reset mỗi stage, xóa giá trị Precheck set.
   }
 
   parameters {
@@ -97,9 +95,8 @@ pipeline {
       }
       steps {
         script {
-          // Không dùng when{ env.SKIP_* }: Jenkins hay evaluate trước khi Precheck set env → stage vẫn chạy và fail.
-          if (env.SKIP_IMAGE_BUILD == 'true') {
-            echo 'Build skipped (Precheck). Commit chỉ env/ hoặc không đổi *-service/ — Argo sync Git là đủ.'
+          if (isSkipImageBuild()) {
+            echo "Build skipped (Precheck). SKIP_IMAGE_BUILD=${env.SKIP_IMAGE_BUILD ?: '(unset)'}"
           } else {
             runImageBuildSteps()
           }
@@ -116,7 +113,7 @@ pipeline {
       }
       steps {
         script {
-          if (env.SKIP_IMAGE_BUILD == 'true') {
+          if (isSkipImageBuild()) {
             echo 'Push Git skipped (không có build).'
           } else {
             runCiGitPushSteps()
@@ -337,6 +334,14 @@ pipeline {
   }
 }
 
+def isSkipImageBuild() {
+  return (env.SKIP_IMAGE_BUILD ?: '').toString() == 'true'
+}
+
+def isSkipQualityGates() {
+  return (env.SKIP_QUALITY_GATES ?: '').toString() == 'true'
+}
+
 def pipelineNeedsCheckout() {
   return params.PIPELINE_SCOPE in ['auto', 'build-only', 'build-and-full', 'full']
 }
@@ -358,7 +363,7 @@ def pipelineNeedsQualityGates() {
     return true
   }
   if (s == 'auto') {
-    return env.SKIP_QUALITY_GATES != 'true'
+    return !isSkipQualityGates()
   }
   return false
 }
@@ -383,6 +388,12 @@ def applyAutoTestTargets(String detected) {
 }
 
 def precheckPipeline() {
+  env.SKIP_IMAGE_BUILD = 'false'
+  env.SKIP_QUALITY_GATES = 'false'
+  env.DETECTED_SERVICES = ''
+  if (params.PIPELINE_SCOPE == 'build-only') {
+    echo 'Gợi ý: commit chỉ Jenkinsfile/env → dùng PIPELINE_SCOPE=auto (không phải build-only).'
+  }
   def msg = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
   if (msg ==~ /(?i)^ci:\s*bump\b.*/ || msg.contains('[skip ci]')) {
     env.SKIP_IMAGE_BUILD = 'true'
@@ -456,14 +467,16 @@ def resolveBuildServicesList() {
 }
 
 def runImageBuildSteps() {
-  if (env.SKIP_IMAGE_BUILD == 'true') {
+  if (isSkipImageBuild()) {
     echo 'runImageBuildSteps: skipped.'
     return
   }
   def envFile = "env/${params.TARGET_ENV}.yaml"
   def svcs = resolveBuildServicesList()
   if (!svcs?.trim()) {
-    error("BUILD_SERVICES='${params.BUILD_SERVICES}' — không có service nào để build.")
+    echo "Không có service để build (BUILD_SERVICES=${params.BUILD_SERVICES}) — bỏ qua, không fail."
+    env.SKIP_IMAGE_BUILD = 'true'
+    return
   }
   withCredentials([usernamePassword(
     credentialsId: 'dockerhub-credentials',
