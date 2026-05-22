@@ -17,6 +17,10 @@
 - `auto` → **skip build**, vẫn **chạy Parallel tests** với tag trong `env/dev.yaml` (verify Hub).
 - Hoặc bật **`DEPLOY_EXISTING_ENV_TAGS=true`** (cùng ý).
 
+## Test trước Promote (canary pause)
+
+Sau Argo sync tag mới: rollout **Paused**, stable Endpoints trống, canary có pod. Jenkins **tự** `X-Canary:true` — không cần `kubectl promote` trước test. Pass test → **Rollout Decision Gate** → Promote.
+
 ## Override
 
 | Param / scope | Ý nghĩa |

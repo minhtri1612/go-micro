@@ -63,7 +63,7 @@ pipeline {
     string(name: 'ROUTE_PREFIX', defaultValue: 'auto', description: '`auto` = suy từ BUSINESS_SERVICES (ưu tiên) hoặc DEPENDENCY_SERVICES khi chọn 1 service; cả hai `all` → `/api/v1/products`. Ghi path tường minh để override.')
     booleanParam(name: 'ROUTE_SMOKE', defaultValue: true, description: 'Chạy route smoke canary/preview (curl qua --resolve, không cần ghi /etc/hosts).')
     choice(name: 'ROUTE_MODE', choices: ['canary', 'preview', 'standard'], description: 'Mode route smoke để test traffic split trước promote.')
-    booleanParam(name: 'CANARY_HEADER_API_TESTS', defaultValue: false, description: 'Bật để ép dependency/business gửi X-Canary:true. Mặc định tắt vì một số endpoint POST có thể trả 405 qua canary route.')
+    booleanParam(name: 'CANARY_HEADER_API_TESTS', defaultValue: false, description: 'Ép X-Canary:true. Mặc định tắt; pipeline TỰ bật khi rollout Paused + stable Endpoints trống + canary còn pod (trước khi bấm Promote).')
     booleanParam(name: 'ENABLE_K8S_NODE_CHECK', defaultValue: true, description: 'Chạy check Kubernetes API thuần (requests) để list nodes trước test chính.')
     string(name: 'K6_SERVICE_NAME', defaultValue: 'product', description: 'Service k6 load-test (map port trong tests/load-test/k6-script.js).')
     string(name: 'K6_VUS', defaultValue: '5', description: 'k6 virtual users')
@@ -140,6 +140,11 @@ pipeline {
           echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
           echo "Rollout target: ${params.ROLLOUT_NAMESPACE}/${env.RESOLVED_ROLLOUT_SERVICE ?: '(none)'}"
           echo "Route smoke prefix: ${env.EFFECTIVE_ROUTE_PREFIX} (ROUTE_PREFIX param='${params.ROUTE_PREFIX}')"
+          def autoCanary = detectAutoCanaryHeaderForTests()
+          env.AUTO_CANARY_HEADER_FOR_TESTS = autoCanary ? 'true' : 'false'
+          if (autoCanary) {
+            echo 'Canary pause: stable chưa có backend — test dùng X-Canary (không cần promote tay trước Jenkins).'
+          }
         }
       }
     }
@@ -675,8 +680,8 @@ cd /tmp/go-micro'''
 def runDependencyCheckSteps() {
   def allDep = ['product', 'inventory', 'order', 'payment', 'noti']
   def svcs = expandServicesCsv(getEffectiveDependencyServices(), allDep)
-  def canaryHeader = shouldEnableCanaryHeaderForApiTests() ? 'true' : 'false'
   svcs.each { svc ->
+    def canaryHeader = shouldUseCanaryHeaderForService(svc) ? 'true' : 'false'
     runWithMode(
       env.EFFECTIVE_EXECUTION_MODE,
       params.DEV_KUBE_CONTEXT,
@@ -695,8 +700,8 @@ def runDependencyCheckSteps() {
 def runBusinessSmokeSteps() {
   def allBiz = ['product', 'inventory', 'order', 'payment', 'noti']
   def svcs = expandServicesCsv(getEffectiveBusinessServices(), allBiz)
-  def canaryHeader = shouldEnableCanaryHeaderForApiTests() ? 'true' : 'false'
   svcs.each { svc ->
+    def canaryHeader = shouldUseCanaryHeaderForService(svc) ? 'true' : 'false'
     runWithMode(
       env.EFFECTIVE_EXECUTION_MODE,
       params.DEV_KUBE_CONTEXT,
@@ -779,7 +784,62 @@ def runK6LoadSteps() {
 }
 
 def shouldEnableCanaryHeaderForApiTests() {
-  return params.CANARY_HEADER_API_TESTS == true
+  return params.CANARY_HEADER_API_TESTS == true || params.CANARY_HEADER_API_TESTS == 'true'
+}
+
+def shouldUseCanaryHeaderForService(String svc) {
+  if (shouldEnableCanaryHeaderForApiTests() || env.AUTO_CANARY_HEADER_FOR_TESTS == 'true') {
+    return true
+  }
+  return serviceNeedsCanaryHeaderForTests(svc)
+}
+
+def serviceEndpointsReady(String kubeContext, String namespace, String serviceName) {
+  if (!serviceName?.trim()) {
+    return false
+  }
+  def ips = sh(
+    script: "kubectl --context ${kubeContext} -n ${namespace} get endpoints ${serviceName} -o jsonpath='{.subsets[0].addresses[*].ip}' 2>/dev/null || true",
+    returnStdout: true
+  ).trim()
+  return ips.length() > 0
+}
+
+def serviceNeedsCanaryHeaderForTests(String svc) {
+  def ns = params.ROLLOUT_NAMESPACE?.trim()
+  def ctx = params.DEV_KUBE_CONTEXT?.trim()
+  if (!svc?.trim() || !ns || !ctx) {
+    return false
+  }
+  def stableReady = serviceEndpointsReady(ctx, ns, svc)
+  if (stableReady) {
+    return false
+  }
+  def canaryReady = serviceEndpointsReady(ctx, ns, "${svc}-canary")
+  if (!canaryReady) {
+    return false
+  }
+  def phase = sh(
+    script: "kubectl --context ${ctx} -n ${ns} get rollout ${svc} -o jsonpath='{.status.phase}' 2>/dev/null || true",
+    returnStdout: true
+  ).trim()
+  if (phase in ['Paused', 'Progressing']) {
+    echo "auto X-Canary: rollout/${svc} phase=${phase}, stable Endpoints trống, canary có pod — test trước Promote gate."
+    return true
+  }
+  return false
+}
+
+def detectAutoCanaryHeaderForTests() {
+  def probe = env.RESOLVED_ROLLOUT_SERVICE?.trim()
+  if (probe) {
+    return serviceNeedsCanaryHeaderForTests(probe)
+  }
+  def dep = getEffectiveDependencyServices()?.trim()?.toLowerCase()
+  if (dep && dep != 'all' && !dep.contains(',')) {
+    return serviceNeedsCanaryHeaderForTests(dep)
+  }
+  return false
 }
 
 def validateKubeContext(String kubeContext) {
