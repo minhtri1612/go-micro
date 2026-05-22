@@ -1,30 +1,28 @@
-# CI: git push → bump tag → Hub → env/dev.yaml
+# CI — `PIPELINE_SCOPE=auto` (mặc định)
 
-## Việc của bạn
+Jenkins **detect commit** — không cần chọn `build-only` vs `full` mỗi lần.
 
-1. Sửa code trong **một** service (vd. `order-service/`)
-2. `git push main` — Jenkins poll SCM (~5 phút), mặc định **`BUILD_SERVICES=auto`**
-3. Chỉ service đó được bump + build + push Hub + push `env/dev.yaml`
-4. **Promote** (tách bước): `PIPELINE_SCOPE=full`, `ROLLOUT_SERVICE` = service vừa deploy (vd. `order`) → test → Promote
+## 1. Chỉ sửa `env/dev.yaml` (test tag GitOps)
 
-`build-only` **không có** Promote — đó là đúng thiết kế.
+- **Skip:** Build & push images, Push Git  
+- **Chạy:** Prepare → test → promote gate  
+- Argo sync Git là đủ để cluster dùng tag mới  
 
-## Jenkins tự làm (build-only + auto)
+## 2. Sửa code `order-service/` (ví dụ)
 
-- `detect-changed-services.sh` — file trong commit thuộc `*-service/` hoặc `client/`
-- Chỉ service đó: `bump-image-tag.sh` (+1 patch) → `docker-build-push.sh` → `git push` env
-- Commit message `ci: bump tags … [skip ci]` → **không** build lại (tránh vòng poll SCM)
+- **Chạy:** Build & push **chỉ order** → bump tag order trong `env/dev.yaml` → Push Git  
+- **Rồi:** Prepare → test (auto chọn `order` nếu 1 service) → promote  
 
-## Khi nào **không** bump tag
+## 3. Commit `ci: bump` / chỉ Jenkinsfile
 
-- Commit chỉ Jenkinsfile / `scripts/ci/` / **`env/dev.yaml`** (downgrade tag v1.0.8→v1.0.3) → Jenkins **SUCCESS + skip build**; **Argo sync** là đủ, không cần `build-only`.
-- Commit do Jenkins push (`ci: bump …`)
-- Dùng `BUILD_SERVICES=all` thủ công nếu cần rebuild cả 6 service + client
+- **Skip** cả build lẫn test → SUCCESS  
 
-## Tag baseline
+## Override thủ công
 
-`env/dev.yaml` là source of truth cho Argo. Chỉ tăng patch khi **có build** service đó.
+| Scope | Khi nào |
+|-------|---------|
+| `build-only` | Chỉ build, không test |
+| `full` | Chỉ test/promote, không build |
+| `build-and-full` | Luôn cả hai |
 
-## Credentials
-
-Xem `scripts/jenkins-ci.env.example` + `bash scripts/jenkins-setup-ci-secrets.sh`
+`BUILD_SERVICES=all` chỉ khi rebuild cả 6 service + client.

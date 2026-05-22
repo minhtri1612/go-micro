@@ -1,8 +1,8 @@
-// Luồng lab:
-//   git push code (*-service/) → poll SCM: build-only + BUILD_SERVICES=auto (mặc định)
-//     → CHỈ service có file đổi trong commit → bump tag → docker push → git push env
-//   Commit "ci: bump …" / không đổi *-service/ → SKIP build (không bump thêm).
-//   Promote: PIPELINE_SCOPE=full (hoặc build-and-full), ROLLOUT_SERVICE = service vừa deploy — KHÔNG có trong build-only.
+// Luồng lab (PIPELINE_SCOPE=auto — mặc định):
+//   Chỉ sửa env/dev.yaml        → SKIP Build + Push Git; chạy Prepare + test + promote gate (test tag GitOps).
+//   Sửa order-service/ (ví dụ) → CHỈ build/push order; bump tag order; Push Git; rồi test + promote.
+//   ci: bump / Jenkinsfile only → SKIP toàn pipeline (SUCCESS).
+//   build-only / full — override thủ công khi cần.
 // Credentials: dockerhub-credentials, github-go-micro-pat (bắt buộc cho PUSH_GIT).
 
 pipeline {
@@ -18,13 +18,15 @@ pipeline {
     KUBECONFIG = '/var/jenkins_home/.kube/config'
     EFFECTIVE_EXECUTION_MODE = 'dev-pod'
     SKIP_IMAGE_BUILD = 'false'
+    SKIP_QUALITY_GATES = 'false'
+    DETECTED_SERVICES = ''
   }
 
   parameters {
     choice(
       name: 'PIPELINE_SCOPE',
-      choices: ['build-only', 'build-and-full', 'full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'],
-      description: '`build-only` = auto detect + bump env + docker push + git push (sau git push code). `full` = test + promote (không build). `build-and-full` = cả hai.'
+      choices: ['auto', 'build-only', 'build-and-full', 'full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'],
+      description: '`auto` (mặc định): detect commit — env/ only → test; *-service/ → build đúng service + test. `build-only`/`full` = ép một nhánh.'
     )
     choice(name: 'TARGET_ENV', choices: ['dev', 'staging'], description: 'env/<TARGET_ENV>.yaml — dùng khi scope có build.')
     choice(
@@ -71,27 +73,27 @@ pipeline {
   stages {
     stage('Checkout') {
       when {
-        expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
+        expression { pipelineNeedsCheckout() }
       }
       steps {
         checkout scm
       }
     }
 
-    stage('Precheck build') {
+    stage('Precheck') {
       when {
-        expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
+        expression { pipelineNeedsPrecheck() }
       }
       steps {
         script {
-          precheckImageBuild()
+          precheckPipeline()
         }
       }
     }
 
     stage('Build & push images') {
       when {
-        expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
+        expression { pipelineNeedsImageBuild() }
       }
       steps {
         script {
@@ -108,7 +110,7 @@ pipeline {
     stage('Push Git') {
       when {
         allOf {
-          expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
+          expression { pipelineNeedsImageBuild() }
           expression { params.PUSH_GIT == true }
         }
       }
@@ -125,14 +127,14 @@ pipeline {
 
     stage('Prepare') {
       when {
-        expression { params.PIPELINE_SCOPE != 'build-only' }
+        expression { pipelineNeedsQualityGates() }
       }
       steps {
         sh 'kubectl version --client'
         script {
           validateKubeContext(params.DEV_KUBE_CONTEXT)
-          env.RESOLVED_ROLLOUT_SERVICE = resolveRolloutService(params.ROLLOUT_SERVICE, params.DEPENDENCY_SERVICES, params.BUSINESS_SERVICES)
-          env.EFFECTIVE_ROUTE_PREFIX = resolveEffectiveRoutePrefix(params.ROUTE_PREFIX, params.DEPENDENCY_SERVICES, params.BUSINESS_SERVICES)
+          env.RESOLVED_ROLLOUT_SERVICE = resolveRolloutService(params.ROLLOUT_SERVICE, getEffectiveDependencyServices(), getEffectiveBusinessServices())
+          env.EFFECTIVE_ROUTE_PREFIX = resolveEffectiveRoutePrefix(params.ROUTE_PREFIX, getEffectiveDependencyServices(), getEffectiveBusinessServices())
           echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
           echo "Rollout target: ${params.ROLLOUT_NAMESPACE}/${env.RESOLVED_ROLLOUT_SERVICE ?: '(none)'}"
           echo "Route smoke prefix: ${env.EFFECTIVE_ROUTE_PREFIX} (ROUTE_PREFIX param='${params.ROUTE_PREFIX}')"
@@ -144,7 +146,7 @@ pipeline {
       when {
         allOf {
           expression { params.ENABLE_K8S_NODE_CHECK == true }
-          expression { params.PIPELINE_SCOPE != 'load-only' && params.PIPELINE_SCOPE != 'build-only' }
+          expression { pipelineNeedsQualityGates() && params.PIPELINE_SCOPE != 'load-only' }
         }
       }
       steps {
@@ -158,7 +160,7 @@ pipeline {
     // Chỉ `full` mới dùng Declarative parallel (4 nhánh). `*-only` chạy một stage riêng — tránh log/CPS rối (mọi nhánh skipped trừ một).
     stage('Parallel tests') {
       when {
-        expression { params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' }
+        expression { pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' || params.PIPELINE_SCOPE == 'auto') }
       }
       parallel {
         stage('Dependency Check') {
@@ -198,7 +200,7 @@ pipeline {
     stage('Rollout Decision Gate') {
       when {
         allOf {
-          expression { params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' }
+          expression { pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' || params.PIPELINE_SCOPE == 'auto') }
           expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
           expression { params.AUTO_PROMOTE == false && params.ENABLE_MANUAL_ROLLOUT_GATE == true }
         }
@@ -284,7 +286,7 @@ pipeline {
     stage('Promote Rollout') {
       when {
         allOf {
-          expression { params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' }
+          expression { pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' || params.PIPELINE_SCOPE == 'auto') }
           expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
           expression { params.AUTO_PROMOTE == true }
         }
@@ -301,7 +303,7 @@ pipeline {
   post {
     failure {
       script {
-        def fullScope = (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full')
+        def fullScope = pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' || params.PIPELINE_SCOPE == 'auto')
         if (fullScope && params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
           runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
         } else if (fullScope && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
@@ -335,29 +337,114 @@ pipeline {
   }
 }
 
-def precheckImageBuild() {
+def pipelineNeedsCheckout() {
+  return params.PIPELINE_SCOPE in ['auto', 'build-only', 'build-and-full', 'full']
+}
+
+def pipelineNeedsPrecheck() {
+  return params.PIPELINE_SCOPE in ['auto', 'build-only', 'build-and-full']
+}
+
+def pipelineNeedsImageBuild() {
+  return params.PIPELINE_SCOPE in ['auto', 'build-only', 'build-and-full']
+}
+
+def pipelineNeedsQualityGates() {
+  def s = params.PIPELINE_SCOPE
+  if (s == 'build-only') {
+    return false
+  }
+  if (s in ['dependency-only', 'business-only', 'route-smoke-only', 'load-only', 'full', 'build-and-full']) {
+    return true
+  }
+  if (s == 'auto') {
+    return env.SKIP_QUALITY_GATES != 'true'
+  }
+  return false
+}
+
+def getEffectiveDependencyServices() {
+  return env.EFFECTIVE_DEPENDENCY_SERVICES?.trim() ?: params.DEPENDENCY_SERVICES
+}
+
+def getEffectiveBusinessServices() {
+  return env.EFFECTIVE_BUSINESS_SERVICES?.trim() ?: params.BUSINESS_SERVICES
+}
+
+def applyAutoTestTargets(String detected) {
+  def rolloutList = detected.split(/\s+/).collect { it.trim() }.findAll { it && it != 'client' }
+  if (rolloutList.size() == 1) {
+    env.EFFECTIVE_DEPENDENCY_SERVICES = rolloutList[0]
+    env.EFFECTIVE_BUSINESS_SERVICES = rolloutList[0]
+    echo "auto: test + promote target → ${rolloutList[0]}"
+  } else if (rolloutList.size() > 1) {
+    echo "auto: build [${detected}] — test dùng DEPENDENCY/BUSINESS trên Jenkins (mặc định all)"
+  }
+}
+
+def precheckPipeline() {
   def msg = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
   if (msg ==~ /(?i)^ci:\s*bump\b.*/ || msg.contains('[skip ci]')) {
     env.SKIP_IMAGE_BUILD = 'true'
-    currentBuild.description = 'Skipped: commit CI bump env (không đổi *-service/)'
-    echo "SKIP build: commit Jenkins bump env — '${msg}'"
+    env.SKIP_QUALITY_GATES = 'true'
+    currentBuild.description = 'Skipped: ci bump commit'
+    echo "SKIP all: '${msg}'"
     return
   }
+
+  if (params.PIPELINE_SCOPE == 'auto') {
+    def mode = sh(script: 'bash scripts/ci/detect-commit-mode.sh', returnStdout: true).trim()
+    def detected = sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
+    echo "auto: mode=${mode}, services='${detected}'"
+    if (mode == 'service' && detected) {
+      env.SKIP_IMAGE_BUILD = 'false'
+      env.SKIP_QUALITY_GATES = 'false'
+      env.DETECTED_SERVICES = detected
+      applyAutoTestTargets(detected)
+      currentBuild.description = "auto: build+test [${detected}]"
+      return
+    }
+    if (mode == 'env-only') {
+      env.SKIP_IMAGE_BUILD = 'true'
+      env.SKIP_QUALITY_GATES = 'false'
+      currentBuild.description = 'auto: env/ only — test (skip build)'
+      echo 'Chỉ env/* đổi → skip Build + Push Git; chạy Prepare + test. Argo sync Git.'
+      sh 'git show -1 --name-only --pretty=format:"  %h %s"'
+      return
+    }
+    env.SKIP_IMAGE_BUILD = 'true'
+    env.SKIP_QUALITY_GATES = 'true'
+    currentBuild.description = 'auto: skip (không service/env)'
+    echo 'SKIP: commit không đổi *-service/ hay env/'
+    sh 'git show -1 --name-only --pretty=format:"  %h %s"'
+    return
+  }
+
+  precheckLegacyBuildScope()
+}
+
+def precheckLegacyBuildScope() {
   if (params.BUILD_SERVICES == 'auto') {
     def detected = sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
     if (!detected) {
       env.SKIP_IMAGE_BUILD = 'true'
-      currentBuild.description = 'Skipped: auto — không có *-service/ hoặc client/ trong commit'
-      echo 'SKIP build: BUILD_SERVICES=auto nhưng commit không sửa product-service/, order-service/, client/, …'
+      env.SKIP_QUALITY_GATES = 'true'
+      currentBuild.description = 'Skipped: không có *-service/ trong commit'
+      echo 'SKIP build: BUILD_SERVICES=auto, không có service đổi'
       sh 'git show -1 --name-only --pretty=format:"  %h %s"'
       return
     }
-    echo "auto → build: ${detected}"
+    env.DETECTED_SERVICES = detected
+    echo "build scope → ${detected}"
   }
   env.SKIP_IMAGE_BUILD = 'false'
+  env.SKIP_QUALITY_GATES = (params.PIPELINE_SCOPE == 'build-only') ? 'true' : 'false'
 }
 
 def resolveBuildServicesList() {
+  if (env.DETECTED_SERVICES?.trim()) {
+    return env.DETECTED_SERVICES.trim()
+  }
   def allSvcs = 'product inventory order payment noti client'
   if (params.BUILD_SERVICES == 'all') {
     return allSvcs
@@ -550,7 +637,7 @@ cd /tmp/go-micro'''
 
 def runDependencyCheckSteps() {
   def allDep = ['product', 'inventory', 'order', 'payment', 'noti']
-  def svcs = expandServicesCsv(params.DEPENDENCY_SERVICES, allDep)
+  def svcs = expandServicesCsv(getEffectiveDependencyServices(), allDep)
   def canaryHeader = shouldEnableCanaryHeaderForApiTests() ? 'true' : 'false'
   svcs.each { svc ->
     runWithMode(
@@ -570,7 +657,7 @@ def runDependencyCheckSteps() {
 
 def runBusinessSmokeSteps() {
   def allBiz = ['product', 'inventory', 'order', 'payment', 'noti']
-  def svcs = expandServicesCsv(params.BUSINESS_SERVICES, allBiz)
+  def svcs = expandServicesCsv(getEffectiveBusinessServices(), allBiz)
   def canaryHeader = shouldEnableCanaryHeaderForApiTests() ? 'true' : 'false'
   svcs.each { svc ->
     runWithMode(

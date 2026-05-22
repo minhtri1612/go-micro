@@ -90,7 +90,7 @@ controller:
               pipelineJob('go-micro') {
                 displayName('go-micro (GitHub)')
                 parameters {
-                  choiceParam('PIPELINE_SCOPE', ['build-only', 'build-and-full', 'full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'], 'build-only = chỉ build+push env; full = test+promote')
+                  choiceParam('PIPELINE_SCOPE', ['auto', 'build-only', 'build-and-full', 'full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'], 'auto = detect: env/ → test; *-service/ → build 1 service + test')
                   choiceParam('BUILD_SERVICES', ['auto', 'all', 'product', 'inventory', 'order', 'payment', 'noti', 'client'], 'auto = chỉ service đổi trong commit')
                   booleanParam('PUSH_GIT', true)
                 }
