@@ -26,7 +26,7 @@ livenessProbe:
   httpGet: null
   tcpSocket:
     port: 8084
-  initialDelaySeconds: 30
+  initialDelaySeconds: 60
   periodSeconds: 10
 
 readinessProbe:
