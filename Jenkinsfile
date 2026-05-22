@@ -91,14 +91,16 @@ pipeline {
 
     stage('Build & push images') {
       when {
-        allOf {
-          expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
-          expression { env.SKIP_IMAGE_BUILD != 'true' }
-        }
+        expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
       }
       steps {
         script {
-          runImageBuildSteps()
+          // Không dùng when{ env.SKIP_* }: Jenkins hay evaluate trước khi Precheck set env → stage vẫn chạy và fail.
+          if (env.SKIP_IMAGE_BUILD == 'true') {
+            echo 'Build skipped (Precheck). Commit chỉ env/ hoặc không đổi *-service/ — Argo sync Git là đủ.'
+          } else {
+            runImageBuildSteps()
+          }
         }
       }
     }
@@ -108,12 +110,15 @@ pipeline {
         allOf {
           expression { params.PIPELINE_SCOPE == 'build-only' || params.PIPELINE_SCOPE == 'build-and-full' }
           expression { params.PUSH_GIT == true }
-          expression { env.SKIP_IMAGE_BUILD != 'true' }
         }
       }
       steps {
         script {
-          runCiGitPushSteps()
+          if (env.SKIP_IMAGE_BUILD == 'true') {
+            echo 'Push Git skipped (không có build).'
+          } else {
+            runCiGitPushSteps()
+          }
         }
       }
     }
@@ -364,6 +369,10 @@ def resolveBuildServicesList() {
 }
 
 def runImageBuildSteps() {
+  if (env.SKIP_IMAGE_BUILD == 'true') {
+    echo 'runImageBuildSteps: skipped.'
+    return
+  }
   def envFile = "env/${params.TARGET_ENV}.yaml"
   def svcs = resolveBuildServicesList()
   if (!svcs?.trim()) {

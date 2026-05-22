@@ -17,7 +17,7 @@
 
 ## Khi nào **không** bump tag
 
-- Commit chỉ Jenkinsfile / `scripts/ci/` / `env/` (không có `order-service/`, …)
+- Commit chỉ Jenkinsfile / `scripts/ci/` / **`env/dev.yaml`** (downgrade tag v1.0.8→v1.0.3) → Jenkins **SUCCESS + skip build**; **Argo sync** là đủ, không cần `build-only`.
 - Commit do Jenkins push (`ci: bump …`)
 - Dùng `BUILD_SERVICES=all` thủ công nếu cần rebuild cả 6 service + client
 
