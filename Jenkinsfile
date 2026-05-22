@@ -159,13 +159,16 @@ pipeline {
       }
     }
 
-    // Chỉ `full` mới dùng Declarative parallel (4 nhánh). `*-only` chạy một stage riêng — tránh log/CPS rối (mọi nhánh skipped trừ một).
+    // Một khối parallel duy nhất — không tạo stage trùng tên ở ngoài (Blue Ocean sẽ không rời rạc).
     stage('Parallel tests') {
       when {
-        expression { pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' || params.PIPELINE_SCOPE == 'auto') }
+        expression { pipelineNeedsParallelTests() }
       }
       parallel {
         stage('Dependency Check') {
+          when {
+            expression { pipelineNeedsDependencyCheck() }
+          }
           steps {
             script {
               runDependencyCheckSteps()
@@ -173,6 +176,9 @@ pipeline {
           }
         }
         stage('Business Smoke Test') {
+          when {
+            expression { pipelineNeedsBusinessSmoke() }
+          }
           steps {
             script {
               runBusinessSmokeSteps()
@@ -181,7 +187,10 @@ pipeline {
         }
         stage('Route Smoke') {
           when {
-            expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
+            allOf {
+              expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
+              expression { pipelineNeedsRouteSmoke() }
+            }
           }
           steps {
             script {
@@ -190,6 +199,9 @@ pipeline {
           }
         }
         stage('Load Test (k6)') {
+          when {
+            expression { pipelineNeedsK6Load() }
+          }
           steps {
             script {
               runK6LoadSteps()
@@ -234,53 +246,6 @@ pipeline {
           } else {
             error("Unexpected ROLLOUT_ACTION value: '${decision}'")
           }
-        }
-      }
-    }
-
-    stage('Dependency Check') {
-      when {
-        expression { params.PIPELINE_SCOPE == 'dependency-only' }
-      }
-      steps {
-        script {
-          runDependencyCheckSteps()
-        }
-      }
-    }
-
-    stage('Business Smoke Test') {
-      when {
-        expression { params.PIPELINE_SCOPE == 'business-only' }
-      }
-      steps {
-        script {
-          runBusinessSmokeSteps()
-        }
-      }
-    }
-
-    stage('Route Smoke') {
-      when {
-        allOf {
-          expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
-          expression { params.PIPELINE_SCOPE == 'route-smoke-only' }
-        }
-      }
-      steps {
-        script {
-          runRouteSmokeSteps()
-        }
-      }
-    }
-
-    stage('Load Test (k6)') {
-      when {
-        expression { params.PIPELINE_SCOPE == 'load-only' }
-      }
-      steps {
-        script {
-          runK6LoadSteps()
         }
       }
     }
@@ -373,6 +338,34 @@ def pipelineNeedsQualityGates() {
   return false
 }
 
+def pipelineNeedsParallelTests() {
+  def s = params.PIPELINE_SCOPE
+  if (s in ['dependency-only', 'business-only', 'route-smoke-only', 'load-only']) {
+    return true
+  }
+  return pipelineNeedsQualityGates() && (s in ['full', 'build-and-full', 'auto'])
+}
+
+def pipelineNeedsDependencyCheck() {
+  def s = params.PIPELINE_SCOPE
+  return s == 'dependency-only' || (pipelineNeedsQualityGates() && s in ['full', 'build-and-full', 'auto'])
+}
+
+def pipelineNeedsBusinessSmoke() {
+  def s = params.PIPELINE_SCOPE
+  return s == 'business-only' || (pipelineNeedsQualityGates() && s in ['full', 'build-and-full', 'auto'])
+}
+
+def pipelineNeedsRouteSmoke() {
+  def s = params.PIPELINE_SCOPE
+  return s == 'route-smoke-only' || (pipelineNeedsQualityGates() && s in ['full', 'build-and-full', 'auto'])
+}
+
+def pipelineNeedsK6Load() {
+  def s = params.PIPELINE_SCOPE
+  return s == 'load-only' || (pipelineNeedsQualityGates() && s in ['full', 'build-and-full', 'auto'])
+}
+
 def getEffectiveDependencyServices() {
   return env.EFFECTIVE_DEPENDENCY_SERVICES?.trim() ?: params.DEPENDENCY_SERVICES
 }
@@ -387,9 +380,10 @@ def handleEnvOnlyDeploy(String envFile) {
     changed = sh(script: "bash scripts/ci/list-env-app-services.sh '${envFile}'", returnStdout: true).trim()
     echo "env/: kiểm tra Hub cho mọi app service trong ${envFile}"
   }
-  echo "env deploy targets: ${changed}"
+  echo "env deploy targets: ${changed.replaceAll('\\n', ' ')}"
+  // Không nhét list service vào 1 dòng sh (newline → shell chạy inventory/noti như lệnh lẻ).
   def verifyRc = sh(
-    script: "bash scripts/ci/verify-env-tags-on-hub.sh '${envFile}' ${changed.split(/\\s+/).findAll { it }.join(' ')}",
+    script: "bash scripts/ci/verify-env-tags-on-hub.sh '${envFile}'",
     returnStatus: true
   )
   if (verifyRc != 0) {
@@ -403,7 +397,7 @@ def handleEnvOnlyDeploy(String envFile) {
 }
 
 def applyAutoTestTargets(String detected) {
-  def rolloutList = detected.split(/\s+/).collect { it.trim() }.findAll { it && it != 'client' }
+  def rolloutList = detected.tokenize().findAll { it != 'client' }
   if (rolloutList.size() == 1) {
     env.EFFECTIVE_DEPENDENCY_SERVICES = rolloutList[0]
     env.EFFECTIVE_BUSINESS_SERVICES = rolloutList[0]
