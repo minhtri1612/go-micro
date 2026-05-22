@@ -229,21 +229,26 @@ def main():
 
         elif service == "payment":
             pay_order_id = random.randint(5000, 9999)
-            # 1. POST /payments/
             pay_body = {"order_id": pay_order_id, "customer_id": 1, "amount": 12.34, "currency": "usd"}
+
             resp = curl_retry(f"{base_url}/payments/", method="POST", body=pay_body, headers=headers)
-            pay_id = resp.json().get('id')
-            assert pay_id, "Payment ID missing"
+            created = _parse_json(resp)
+            # API trả PaymentResponse: { "payment": { "id": ... }, "client_secret", "message" }
+            payment_obj = created.get("payment") if isinstance(created, dict) else created
+            assert isinstance(payment_obj, dict), f"unexpected POST /payments/ body: {created}"
+            pay_id = payment_obj.get("id")
+            assert pay_id, f"Payment ID missing in {created}"
             print(f"[DBG] payment dep create: {pay_id}")
 
-            # 2. GET /payments/order/:orderId
             resp = curl_retry(f"{base_url}/payments/order/{pay_order_id}", headers=headers)
-            assert resp.json().get('amount') == 12.34, "Payment by order mismatch"
+            by_order = _as_list(_parse_json(resp), "GET /payments/order")
+            assert by_order, f"expected payments list for order {pay_order_id}, got {resp.text[:300]}"
+            assert by_order[0].get("amount") == 12.34, "Payment by order amount mismatch"
             print("[DBG] payment dep by_order passed")
 
-            # 3. GET /payments/:id
             resp = curl_retry(f"{base_url}/payments/{pay_id}", headers=headers)
-            assert resp.json().get('id') == pay_id, "Payment get mismatch"
+            got = _parse_json(resp)
+            assert got.get("id") == pay_id, f"Payment get mismatch: {got}"
             print("[DBG] payment dep by_id passed")
 
         elif service == "noti":

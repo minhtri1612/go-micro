@@ -275,10 +275,10 @@ pipeline {
   post {
     failure {
       script {
-        def fullScope = pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' || params.PIPELINE_SCOPE == 'auto')
-        if (fullScope && params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
+        if (shouldAutoAbortRolloutOnFailure()) {
+          echo "AUTO_ABORT: abort rollout ${env.RESOLVED_ROLLOUT_SERVICE}"
           runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
-        } else if (fullScope && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
+        } else if (pipelineNeedsQualityGates() && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
           def failDecision = params.ON_FAILURE_MANUAL_ACTION ?: 'Rollback now'
           def rawFail = null
           timeout(time: 20, unit: 'MINUTES') {
@@ -785,6 +785,17 @@ def runK6LoadSteps() {
 
 def shouldEnableCanaryHeaderForApiTests() {
   return params.CANARY_HEADER_API_TESTS == true || params.CANARY_HEADER_API_TESTS == 'true'
+}
+
+def shouldAutoAbortRolloutOnFailure() {
+  if (!params.AUTO_ABORT) {
+    return false
+  }
+  if (!env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
+    return false
+  }
+  // auto + Parallel: một nhánh fail (vd. dependency) không abort cả rollout — dùng gate Promote/Rollback.
+  return params.PIPELINE_SCOPE in ['full', 'build-and-full']
 }
 
 def shouldUseCanaryHeaderForService(String svc) {
