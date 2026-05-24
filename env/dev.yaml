@@ -28,7 +28,7 @@ order:
 
 payment:
   image:
-    tag: "payment-service-v1.0.4"
+    tag: "payment-service-v1.0.5"
   replicaCount: 3
   rollout:
     enabled: true
