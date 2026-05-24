@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # In ra tên service (product, order, …) cần build.
-# BUILD_SERVICES=auto: file trong commit HEAD + diff HEAD~1..HEAD (union).
+# Nhìn toàn bộ range BASE..HEAD (Jenkins: GIT_PREVIOUS_COMMIT..GIT_COMMIT)
+# để không bỏ sót service-commit bị chôn dưới commit Jenkinsfile/scripts.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
@@ -10,8 +11,8 @@ if [[ -n "${FORCE_SERVICES:-}" ]]; then
   exit 0
 fi
 
-HEAD="${HEAD_REF:-HEAD}"
-BASE="${BASE_REF:-HEAD~1}"
+HEAD="${HEAD_REF:-${GIT_COMMIT:-HEAD}}"
+BASE="${BASE_REF:-${GIT_PREVIOUS_COMMIT:-HEAD~1}}"
 
 declare -A s=()
 add_path() {
@@ -27,21 +28,21 @@ add_path() {
   esac
 }
 
-# Mọi file touched trong commit hiện tại (đúng nghĩa "vừa git push")
-while read -r p; do
-  [[ -n "$p" ]] && add_path "$p"
-done < <(git show -1 --name-only --pretty=format: "$HEAD" 2>/dev/null || true)
-
-# Thêm diff so với parent (phòng merge / amend)
+# Tất cả file trong range BASE..HEAD (bao phủ nhiều commit được push cùng lúc)
 if git rev-parse --verify "${BASE}^{commit}" >/dev/null 2>&1; then
-  while read -r p; do
+  while IFS= read -r p; do
     [[ -n "$p" ]] && add_path "$p"
   done < <(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || true)
+else
+  # Fallback khi không có BASE hợp lệ: chỉ HEAD
+  while IFS= read -r p; do
+    [[ -n "$p" ]] && add_path "$p"
+  done < <(git show -1 --name-only --pretty=format: "$HEAD" 2>/dev/null || true)
 fi
 
 if [[ ${#s[@]} -eq 0 ]]; then
-  echo "DEBUG: commit $(git rev-parse --short HEAD) — không có *-service/ hoặc client/ trong:" >&2
-  git show -1 --name-only --pretty=format:'  %h %s' "$HEAD" 2>/dev/null | sed 's/^/  /' >&2
+  echo "DEBUG: range ${BASE}..${HEAD} — không có *-service/ hoặc client/ trong:" >&2
+  git log --oneline "$BASE..$HEAD" 2>/dev/null | sed 's/^/  /' >&2
   exit 0
 fi
 
