@@ -24,7 +24,7 @@ func NewPaymentController(db *sql.DB) *PaymentController {
 	stripe.Key = os.Getenv("STRIPE_SECRET_KEY")
 	if stripe.Key == "" {
 		log.Fatal("STRIPE_SECRET_KEY is required but not set")
-	}	
+	}
 	return &PaymentController{
 		db: db,
 	}
@@ -76,7 +76,7 @@ func (pc *PaymentController) CreatePayment(c *gin.Context) {
 		RETURNING id
 	`
 
-	err = pc.db.QueryRow(query, payment.OrderID, payment.CustomerID, payment.Amount, payment.Currency, 
+	err = pc.db.QueryRow(query, payment.OrderID, payment.CustomerID, payment.Amount, payment.Currency,
 		payment.Status, payment.StripePaymentID, payment.StripeClientSecret, payment.CreatedAt, payment.UpdatedAt).Scan(&payment.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save payment: " + err.Error()})
@@ -109,14 +109,13 @@ func (pc *PaymentController) ConfirmPayment(c *gin.Context) {
 
 	// Update payment status in database
 	status := model.PaymentStatusPending
-	switch pi.Status {
-	case stripe.PaymentIntentStatusSucceeded:
+	if pi.Status == stripe.PaymentIntentStatusSucceeded {
 		status = model.PaymentStatusSucceeded
-	case stripe.PaymentIntentStatusCanceled:
+	} else if pi.Status == stripe.PaymentIntentStatusCanceled {
 		status = model.PaymentStatusCanceled
-	case stripe.PaymentIntentStatusProcessing:
+	} else if pi.Status == stripe.PaymentIntentStatusProcessing {
 		status = model.PaymentStatusPending
-	default:
+	} else {
 		status = model.PaymentStatusFailed
 	}
 

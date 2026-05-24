@@ -25,8 +25,13 @@ pipeline {
   parameters {
     choice(
       name: 'PIPELINE_SCOPE',
-      choices: ['auto', 'build-only', 'build-and-full', 'full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only'],
-      description: '`auto` (mặc định): detect commit — env/ only → test; *-service/ → build đúng service + test. `build-only`/`full` = ép một nhánh.'
+      choices: ['auto', 'build-only', 'build-and-full', 'full', 'dependency-only', 'business-only', 'route-smoke-only', 'load-only', 'rollback'],
+      description: '`auto` (mặc định): detect commit — env/ only → test; *-service/ → build đúng service + test. `rollback` = patch-1 tag trong env/ (verify Hub) + push Git → Argo sync. `build-only`/`full` = ép một nhánh.'
+    )
+    string(
+      name: 'ROLLBACK_SERVICE',
+      defaultValue: '',
+      description: 'PIPELINE_SCOPE=rollback: service cần rollback (vd: payment). Để trống = rollback product,inventory,order,payment,noti (không gồm client).'
     )
     choice(name: 'TARGET_ENV', choices: ['dev', 'staging'], description: 'env/<TARGET_ENV>.yaml — dùng khi scope có build.')
     choice(
@@ -87,6 +92,17 @@ pipeline {
       }
       steps {
         checkout scm
+      }
+    }
+
+    stage('Rollback') {
+      when {
+        expression { params.PIPELINE_SCOPE == 'rollback' }
+      }
+      steps {
+        script {
+          runRollbackSteps()
+        }
       }
     }
 
@@ -347,7 +363,7 @@ def isSkipQualityGates() {
 }
 
 def pipelineNeedsCheckout() {
-  return params.PIPELINE_SCOPE in ['auto', 'build-only', 'build-and-full', 'full']
+  return params.PIPELINE_SCOPE in ['auto', 'build-only', 'build-and-full', 'full', 'rollback']
 }
 
 def pipelineNeedsPrecheck() {
@@ -517,6 +533,81 @@ def resolveBuildServicesList() {
     return sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
   }
   return params.BUILD_SERVICES?.trim() ?: ''
+}
+
+def runRollbackSteps() {
+  def envFile = "env/${params.TARGET_ENV}.yaml"
+  def targetSvc = params.ROLLBACK_SERVICE?.trim()?.toLowerCase()
+
+  def svcs = []
+  if (targetSvc) {
+    svcs = [targetSvc]
+  } else {
+    def all = sh(
+      script: "bash scripts/ci/list-env-app-services.sh '${envFile}'",
+      returnStdout: true
+    ).trim()
+    svcs = all.tokenize().findAll { it && it != 'client' }
+  }
+
+  if (svcs.isEmpty()) {
+    error('Không có service nào để rollback.')
+  }
+
+  echo "Rollback targets (${envFile}): ${svcs.join(', ')}"
+  env.ROLLBACK_ALREADY_HANDLED = 'true'
+
+  withCredentials([usernamePassword(
+    credentialsId: 'github-go-micro-pat',
+    usernameVariable: 'GH_USER',
+    passwordVariable: 'GH_TOKEN'
+  )]) {
+    svcs.each { svc ->
+      def currentTag = sh(
+        script: "bash scripts/ci/read-env-tag.sh '${envFile}' '${svc}'",
+        returnStdout: true
+      ).trim()
+      echo "${svc} current tag (Git/env): ${currentTag}"
+
+      def prevTag = sh(
+        script: "bash scripts/ci/decrement-tag.sh '${currentTag}'",
+        returnStdout: true
+      ).trim()
+
+      echo "${svc}: ${currentTag} → ${prevTag}"
+
+      def onHub = sh(
+        script: "bash scripts/ci/image-exists-on-hub.sh '${prevTag}'",
+        returnStatus: true
+      ) == 0
+      if (!onHub) {
+        error("${svc}: tag ${prevTag} không có trên Docker Hub — không rollback được.")
+      }
+
+      sh "bash scripts/ci/write-service-tag.sh '${envFile}' '${svc}' '${prevTag}'"
+      echo "${svc}: yaml → ${prevTag}"
+    }
+
+    if (params.PUSH_GIT != true && params.PUSH_GIT != 'true') {
+      echo 'PUSH_GIT=false — yaml đã sửa trên workspace; push Git thủ công hoặc bật PUSH_GIT.'
+      return
+    }
+
+    sh """
+      set -e
+      git config user.email 'jenkins@go-micro.local'
+      git config user.name 'jenkins-ci'
+      git add '${envFile}'
+      if git diff --cached --quiet; then
+        echo 'Nothing to rollback (yaml không đổi).'
+        exit 0
+      fi
+      git commit -m 'ci: rollback tags ${envFile} [${svcs.join(',')}] [skip ci] #${env.BUILD_NUMBER}'
+      git push "https://x-access-token:\${GH_TOKEN}@github.com/minhtri1612/go-micro.git" "HEAD:${params.GIT_BRANCH}"
+    """
+  }
+
+  echo 'Rollback Git xong — ArgoCD sync tag cũ (patch-1 so với tag hiện tại trong env/).'
 }
 
 def saveEnvFileSnapshot(String envFile) {

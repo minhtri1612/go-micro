@@ -21,6 +21,21 @@
 
 Sau Argo sync tag mới: rollout **Paused**, stable Endpoints trống, canary có pod. Jenkins **tự** `X-Canary:true` — không cần `kubectl promote` trước test. Pass test → **Rollout Decision Gate** → Promote.
 
+## Rollback tự động (`PIPELINE_SCOPE=rollback`)
+
+Không sửa tay `env/` — Jenkins đọc tag **hiện tại trong Git**, patch **−1**, verify image có trên Hub, ghi yaml + push → Argo sync.
+
+| Param | Ý nghĩa |
+|-------|---------|
+| `PIPELINE_SCOPE=rollback` | Chỉ stage Rollback (checkout + decrement + push Git) |
+| `ROLLBACK_SERVICE` | `payment` = một service; để trống = product, inventory, order, payment, noti (không client) |
+| `TARGET_ENV` | `dev` → `env/dev.yaml` |
+| `PUSH_GIT` | Mặc định true — push commit `ci: rollback tags ...` |
+
+Ví dụ: yaml `payment-service-v1.0.4` → rollback → `v1.0.3` (phải còn trên Hub).
+
+**Giới hạn:** rollback = **một bậc patch** so với tag trong `env/` (Git), không phải “latest Hub − 1” nếu yaml lệch cluster.
+
 ## Override
 
 | Param / scope | Ý nghĩa |
