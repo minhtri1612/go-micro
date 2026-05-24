@@ -706,14 +706,20 @@ def runImageBuildSteps() {
   )]) {
     sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
     svcs.split(/\s+/).each { svc ->
-      def tag = sh(script: "bash scripts/ci/bump-image-tag.sh '${envFile}' '${svc}'", returnStdout: true).trim()
-      echo "${svc} → ${tag}"
+      def tag = sh(script: "bash scripts/ci/bump-image-tag.sh --compute-only '${envFile}' '${svc}'", returnStdout: true).trim()
+      echo "${svc} → build tag ${tag} (Hub+1; env ghi sau khi image sẵn sàng trên Hub)"
       def onHub = sh(script: "bash scripts/ci/image-exists-on-hub.sh '${tag}'", returnStatus: true) == 0
       if (onHub) {
         echo "${svc}: ${tag} đã có trên Hub — skip docker build/push"
       } else {
         sh "bash scripts/ci/docker-build-push.sh '${svc}' '${tag}'"
+        def onHubAfter = sh(script: "bash scripts/ci/image-exists-on-hub.sh '${tag}'", returnStatus: true) == 0
+        if (!onHubAfter) {
+          error("${svc}: push Hub thất bại — không ghi tag ${tag} vào ${envFile}")
+        }
       }
+      sh "bash scripts/ci/write-service-tag.sh '${envFile}' '${svc}' '${tag}'"
+      echo "${svc}: env/${params.TARGET_ENV}.yaml ← ${tag} (đúng tag Hub)"
     }
   }
 }

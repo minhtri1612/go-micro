@@ -1,5 +1,22 @@
 # CI — `PIPELINE_SCOPE=auto`
 
+## Không sửa tay `env/dev.yaml` khi deploy service
+
+Khi anh **sửa code** `payment-service/` (hoặc service khác) và Jenkins build xong:
+
+1. **Bump** tag mới = max trên **Docker Hub** + 1 (không lấy số cũ trong yaml để quyết định build).
+2. **Build/push** image đúng tag đó lên Hub.
+3. **Ghi** `env/dev.yaml` tag **chính xác** vừa có trên Hub (`write-service-tag.sh`).
+4. **Push Git** `ci: bump tags in env/dev.yaml [skip ci]` → Argo CD sync.
+
+Anh **không** cần mở file env và gõ `v1.0.4` bằng tay. File trên máy local có thể cũ hơn GitHub — `git pull` hoặc:
+
+```bash
+./scripts/sync-env-from-hub.sh env/dev.yaml payment   # khớp Hub cho payment
+```
+
+Chỉ service **được build** trong job mới đổi tag trong env (scope `auto`).
+
 ## Chỉ sửa `env/dev.yaml` (tag đã build sẵn trên Hub, ví dụ rollback v1.0.3)
 
 1. Push `env/dev.yaml` lên `main` **hoặc** đã push rồi → Jenkins Build:

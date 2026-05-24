@@ -34,7 +34,10 @@ func NewPaymentController(db *sql.DB) *PaymentController {
 func (pc *PaymentController) CreatePayment(c *gin.Context) {
 	var req model.PaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+			"code":  "validation_error",
+		})
 		return
 	}
 
@@ -96,7 +99,10 @@ func (pc *PaymentController) CreatePayment(c *gin.Context) {
 func (pc *PaymentController) ConfirmPayment(c *gin.Context) {
 	var req model.PaymentConfirmRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+			"code":  "validation_error",
+		})
 		return
 	}
 
