@@ -1,6 +1,8 @@
 // Luồng lab (PIPELINE_SCOPE=auto — mặc định):
 //   Chỉ sửa env/dev.yaml        → SKIP Build + Push Git; chạy Prepare + test + promote gate (test tag GitOps).
 //   Sửa order-service/ (ví dụ) → CHỈ build/push order; bump tag order; Push Git; rồi test + promote.
+//   Build bump tag              → snapshot env/ trước bump; rollback = revert Git + abort rollout.
+//   Sau promote Healthy         → Emergency Rollback Gate (15 phút) nếu ENABLE_POST_PROMOTE_GATE.
 //   ci: bump / Jenkinsfile only → SKIP toàn pipeline (SUCCESS).
 //   build-only / full — override thủ công khi cần.
 // Credentials: dockerhub-credentials, github-go-micro-pat (bắt buộc cho PUSH_GIT).
@@ -47,6 +49,11 @@ pipeline {
     booleanParam(name: 'AUTO_PROMOTE', defaultValue: false, description: 'Tự promote rollout khi toàn bộ quality gate pass. Nếu FALSE, Jenkins sẽ dừng lại hiện nút bấm cho anh duyệt.')
     booleanParam(name: 'AUTO_ABORT', defaultValue: true, description: 'Tự abort rollout khi pipeline fail hoặc anh nhấn nút Abort.')
     booleanParam(name: 'ENABLE_MANUAL_ROLLOUT_GATE', defaultValue: true, description: 'Hiện bước nút bấm Promote/Rollback trên Jenkins UI sau khi test pass.')
+    booleanParam(
+      name: 'ENABLE_POST_PROMOTE_GATE',
+      defaultValue: true,
+      description: 'Sau promote Healthy: hiện nút Emergency Rollback (timeout 15 phút). Timeout → giữ nguyên.'
+    )
     choice(name: 'ON_FAILURE_MANUAL_ACTION', choices: ['Rollback now', 'Do nothing'], description: 'Khi pipeline fail và AUTO_ABORT=false: chọn hành động mặc định cho bước manual fail gate.')
     string(name: 'TARGET_HOST', defaultValue: 'dev.go-micro.local', description: 'Host trong URL + header Host cho route smoke (Traefik/Ingress :80).')
     string(name: 'BACKEND_IP', defaultValue: '172.18.255.10', description: 'IP gateway/Ingress: dependency & business (http://IP:port), route smoke (--resolve), k6 TARGET_URL.')
@@ -243,11 +250,14 @@ pipeline {
           def decision = (rawDecision instanceof Map) ? rawDecision['ROLLOUT_ACTION']?.toString() : rawDecision?.toString()
           echo "Rollout manual choice: ${decision}"
           if (decision == 'Rollback now') {
+            env.ROLLBACK_ALREADY_HANDLED = 'true'
+            rollbackGitTags("env/${params.TARGET_ENV}.yaml")
             runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
             error("Manual decision = rollback. Rollout đã abort theo yêu cầu.")
           } else if (decision == 'Promote to stable') {
             runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
             waitRolloutComplete(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE)
+            env.ROLLOUT_PROMOTED = 'true'
           } else {
             error("Unexpected ROLLOUT_ACTION value: '${decision}'")
           }
@@ -267,6 +277,23 @@ pipeline {
         script {
           runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
           waitRolloutComplete(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE)
+          env.ROLLOUT_PROMOTED = 'true'
+        }
+      }
+    }
+
+    stage('Emergency Rollback Gate') {
+      when {
+        allOf {
+          expression { params.ENABLE_POST_PROMOTE_GATE == true || params.ENABLE_POST_PROMOTE_GATE == 'true' }
+          expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
+          expression { env.ROLLOUT_PROMOTED == 'true' }
+          expression { params.PIPELINE_SCOPE in ['full', 'build-and-full', 'auto'] }
+        }
+      }
+      steps {
+        script {
+          runEmergencyRollbackGateSteps()
         }
       }
     }
@@ -277,6 +304,7 @@ pipeline {
       script {
         if (shouldAutoAbortRolloutOnFailure()) {
           echo "AUTO_ABORT: abort rollout ${env.RESOLVED_ROLLOUT_SERVICE}"
+          rollbackGitTags("env/${params.TARGET_ENV}.yaml")
           runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
         } else if (pipelineNeedsQualityGates() && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
           def failDecision = params.ON_FAILURE_MANUAL_ACTION ?: 'Rollback now'
@@ -294,6 +322,7 @@ pipeline {
           failDecision = (rawFail instanceof Map) ? rawFail['FAILURE_ACTION']?.toString() : rawFail?.toString()
           echo "Failure manual choice: ${failDecision}"
           if (failDecision == 'Rollback now') {
+            rollbackGitTags("env/${params.TARGET_ENV}.yaml")
             runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
           } else {
             echo "Manual failure action: none (giữ nguyên rollout state)"
@@ -490,12 +519,89 @@ def resolveBuildServicesList() {
   return params.BUILD_SERVICES?.trim() ?: ''
 }
 
+def saveEnvFileSnapshot(String envFile) {
+  env.ENV_FILE_SNAPSHOT_PATH = envFile
+  env.ENV_FILE_SNAPSHOT = sh(script: "cat '${envFile}'", returnStdout: true)
+  echo "Snapshot saved: ${envFile} (${env.ENV_FILE_SNAPSHOT.length()} bytes)"
+}
+
+def rollbackGitTags(String envFile) {
+  if (!env.ENV_FILE_SNAPSHOT?.trim()) {
+    echo "Không có ENV_FILE_SNAPSHOT — bỏ qua rollback Git tags."
+    return
+  }
+  echo "Reverting ${envFile} về snapshot trước build..."
+  writeFile file: envFile, text: env.ENV_FILE_SNAPSHOT
+  withCredentials([usernamePassword(
+    credentialsId: 'github-go-micro-pat',
+    usernameVariable: 'GH_USER',
+    passwordVariable: 'GH_TOKEN'
+  )]) {
+    sh """
+      set -e
+      git config user.email 'jenkins@go-micro.local'
+      git config user.name 'jenkins-ci'
+      git add '${envFile}'
+      if git diff --cached --quiet; then
+        echo 'Không có gì để rollback (env/ chưa thay đổi so với snapshot).'
+        exit 0
+      fi
+      git commit -m 'ci: rollback tags ${envFile} [skip ci] #${env.BUILD_NUMBER}'
+      git push "https://x-access-token:\${GH_TOKEN}@github.com/minhtri1612/go-micro.git" "HEAD:${params.GIT_BRANCH}"
+    """
+  }
+  echo 'Git rollback xong — ArgoCD sẽ sync lại image tag cũ.'
+}
+
+def runEmergencyRollbackGateSteps() {
+  echo "Rollout [${env.RESOLVED_ROLLOUT_SERVICE}] đã Healthy. Quan sát service; Emergency Rollback nếu cần (timeout 15 phút → giữ nguyên)."
+  def rawDecision = null
+  def timedOut = false
+  try {
+    timeout(time: 15, unit: 'MINUTES') {
+      rawDecision = input(
+        id: "emergency-rollback-${env.BUILD_NUMBER}",
+        message: "Service [${env.RESOLVED_ROLLOUT_SERVICE}] đang chạy sau promote. Xác nhận ổn hoặc Emergency Rollback?",
+        ok: 'Xác nhận',
+        parameters: [
+          choice(
+            name: 'EMERGENCY_ACTION',
+            choices: ['Service OK — keep', 'Emergency Rollback'],
+            description: 'Emergency Rollback = revert tag Git + abort rollout → ArgoCD sync image cũ'
+          )
+        ]
+      )
+    }
+  } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException ignored) {
+    echo 'Timeout 15 phút không phản hồi → mặc định giữ nguyên (Service OK).'
+    timedOut = true
+  }
+
+  if (timedOut) {
+    return
+  }
+
+  def action = (rawDecision instanceof Map)
+    ? rawDecision['EMERGENCY_ACTION']?.toString()
+    : rawDecision?.toString()
+
+  if (action == 'Emergency Rollback') {
+    echo '=== EMERGENCY ROLLBACK ==='
+    env.EMERGENCY_ROLLBACK_DONE = 'true'
+    rollbackGitTags("env/${params.TARGET_ENV}.yaml")
+    runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+    error('Emergency rollback: tag Git đã revert, rollout đã abort. ArgoCD sẽ sync image cũ.')
+  }
+  echo 'Service stable confirmed — pipeline complete.'
+}
+
 def runImageBuildSteps() {
   if (isSkipImageBuild()) {
     echo 'runImageBuildSteps: skipped.'
     return
   }
   def envFile = "env/${params.TARGET_ENV}.yaml"
+  saveEnvFileSnapshot(envFile)
   def svcs = resolveBuildServicesList()
   if (!svcs?.trim()) {
     echo "Không có service để build (BUILD_SERVICES=${params.BUILD_SERVICES}) — bỏ qua, không fail."
@@ -538,7 +644,7 @@ def runCiGitPushSteps() {
         exit 0
       fi
       git commit -m 'ci: bump tags in ${envFile} [skip ci] #${env.BUILD_NUMBER}'
-      git push 'https://x-access-token:${GH_TOKEN}@github.com/minhtri1612/go-micro.git' 'HEAD:${params.GIT_BRANCH}'
+      git push "https://x-access-token:\${GH_TOKEN}@github.com/minhtri1612/go-micro.git" "HEAD:${params.GIT_BRANCH}"
     """
   }
 }
@@ -788,6 +894,9 @@ def shouldEnableCanaryHeaderForApiTests() {
 }
 
 def shouldAutoAbortRolloutOnFailure() {
+  if (env.EMERGENCY_ROLLBACK_DONE == 'true' || env.ROLLBACK_ALREADY_HANDLED == 'true') {
+    return false
+  }
   if (!params.AUTO_ABORT) {
     return false
   }
