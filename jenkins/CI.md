@@ -17,6 +17,19 @@ Anh **không** cần mở file env và gõ `v1.0.4` bằng tay. File trên máy 
 
 Chỉ service **được build** trong job mới đổi tag trong env (scope `auto`).
 
+## Build tay mà log báo `SKIP all` / `ci: bump ... [skip ci]`
+
+Commit **mới nhất trên `main`** là Jenkins tự push (`ci: bump tags in env/dev.yaml [skip ci]`). Webhook/SCM chạy lại commit đó → **cố ý skip** (không build/test lại vòng vòng).
+
+| Cách chạy | Kết quả |
+|-----------|---------|
+| **Build Now** (Jenkins UI, Started by user) trên HEAD đó | **Test + promote** với tag trong `env/dev.yaml` (vd payment `v1.0.4`), **không** build image lại |
+| Push code `payment-service/` | Build image mới + bump env + test |
+| `DEPLOY_EXISTING_ENV_TAGS=true` | Test/promote tag trong env (khi commit không phải `[skip ci]`) |
+| `PIPELINE_SCOPE=full` | Chỉ test/promote, bỏ qua detect commit |
+
+Muốn **image mới** → phải có commit đổi `*-service/`, không chỉ bấm Build trên commit CI.
+
 ## Chỉ sửa `env/dev.yaml` (tag đã build sẵn trên Hub, ví dụ rollback v1.0.3)
 
 1. Push `env/dev.yaml` lên `main` **hoặc** đã push rồi → Jenkins Build:

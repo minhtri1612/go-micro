@@ -3,7 +3,7 @@
 //   Sửa order-service/ (ví dụ) → CHỈ build/push order; bump tag order; Push Git; rồi test + promote.
 //   Build bump tag              → snapshot env/ trước bump; rollback = revert Git + abort rollout.
 //   Sau promote Healthy         → Emergency Rollback Gate (15 phút) nếu ENABLE_POST_PROMOTE_GATE.
-//   ci: bump / Jenkinsfile only → SKIP toàn pipeline (SUCCESS).
+//   ci: bump [skip ci] (SCM) → SKIP (tránh loop); Build Now (user) → test+promote tag env/.
 //   build-only / full — override thủ công khi cần.
 // Credentials: dockerhub-credentials, github-go-micro-pat (bắt buộc cho PUSH_GIT).
 
@@ -354,6 +354,10 @@ pipeline {
   }
 }
 
+def isUserTriggeredBuild() {
+  return currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.size() > 0
+}
+
 def isSkipImageBuild() {
   return (env.SKIP_IMAGE_BUILD ?: '').toString() == 'true'
 }
@@ -469,11 +473,18 @@ def precheckPipeline() {
     return
   }
   def msg = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
-  if (msg ==~ /(?i)^ci:\s*bump\b.*/ || msg.contains('[skip ci]')) {
+  if (msg ==~ /(?i)^ci:\s*(bump|rollback)\b.*/ || msg.contains('[skip ci]')) {
+    if (isUserTriggeredBuild()) {
+      echo "Build tay trên commit CI — không build Docker lại; test+promote tag trong env/${params.TARGET_ENV}.yaml"
+      echo "  HEAD: '${msg}'"
+      handleEnvOnlyDeploy("env/${params.TARGET_ENV}.yaml")
+      return
+    }
     env.SKIP_IMAGE_BUILD = 'true'
     env.SKIP_QUALITY_GATES = 'true'
-    currentBuild.description = 'Skipped: ci bump commit'
-    echo "SKIP all: '${msg}'"
+    currentBuild.description = 'Skipped: ci [skip ci] commit (tránh vòng lặp webhook)'
+    echo "SKIP all (SCM/auto trên commit CI): '${msg}'"
+    echo 'Muốn chạy test/promote: Build Now (tay) hoặc bật DEPLOY_EXISTING_ENV_TAGS / PIPELINE_SCOPE=full.'
     return
   }
 
