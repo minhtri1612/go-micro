@@ -847,30 +847,23 @@ def parseTimeoutSeconds(String raw) {
   error("POD_WAIT_TIMEOUT không hợp lệ: '${raw}'. Dùng dạng 300s, 10m, 1h hoặc số giây.")
 }
 
-/** Apt + pip inside ephemeral python pods; must not hide install failures (silent apt break → git missing). */
+/** Apk + pip inside ephemeral python-alpine pods. Alpine apk mirrors ổn hơn apt trong kind cluster. */
 def devPodAptBootstrapShell() {
   return '''set -e
-export DEBIAN_FRONTEND=noninteractive
-# IPv6 thường không route; song song nhiều pod dễ trúng "Unable to connect" tới deb.debian.org → retry apt.
-mkdir -p /etc/apt/apt.conf.d
-cat >/etc/apt/apt.conf.d/99ci-go-micro <<'EOF'
-Acquire::ForceIPv4 "true";
-Acquire::Retries "5";
-EOF
+# Alpine: apk nhanh + ít bị mất kết nối hơn apt trong kind/flannel.
 ok=0
-for attempt in 1 2 3 4 5 6; do
-  if apt-get update -qq && apt-get install -y --no-install-recommends git ca-certificates; then
+for attempt in 1 2 3 4; do
+  if apk add --no-cache git ca-certificates 2>&1; then
     ok=1
     break
   fi
-  echo "[WARN] apt update/install failed (attempt $attempt/6); retry in 18s..." >&2
-  sleep 18
+  echo "[WARN] apk add failed (attempt $attempt/4); retry in 10s..." >&2
+  sleep 10
 done
 if [ "$ok" != "1" ]; then
-  echo "[FATAL] apt could not install git after 6 attempts" >&2
+  echo "[FATAL] apk could not install git after 4 attempts" >&2
   exit 1
 fi
-rm -rf /var/lib/apt/lists/*
 command -v git >/dev/null
 pip install --no-cache-dir requests
 '''
@@ -900,7 +893,7 @@ def runDependencyCheckSteps() {
       env.EFFECTIVE_EXECUTION_MODE,
       params.DEV_KUBE_CONTEXT,
       params.DEV_TEST_NAMESPACE,
-      'python:3.11-slim',
+      'python:3.11-alpine',
       """
         ${devPodAptBootstrapShell()}
         ${devPodCloneRepoShell()}
@@ -920,7 +913,7 @@ def runBusinessSmokeSteps() {
       env.EFFECTIVE_EXECUTION_MODE,
       params.DEV_KUBE_CONTEXT,
       params.DEV_TEST_NAMESPACE,
-      'python:3.11-slim',
+      'python:3.11-alpine',
       """
         ${devPodAptBootstrapShell()}
         ${devPodCloneRepoShell()}
@@ -936,7 +929,7 @@ def runRouteSmokeSteps() {
     env.EFFECTIVE_EXECUTION_MODE,
     params.DEV_KUBE_CONTEXT,
     params.DEV_TEST_NAMESPACE,
-    'python:3.11-slim',
+    'python:3.11-alpine',
     """
       ${devPodAptBootstrapShell()}
       ${devPodCloneRepoShell()}
@@ -951,7 +944,7 @@ def runK8sNodeCheckSteps() {
     env.EFFECTIVE_EXECUTION_MODE,
     params.DEV_KUBE_CONTEXT,
     params.DEV_TEST_NAMESPACE,
-    'python:3.11-slim',
+    'python:3.11-alpine',
     """
       ${devPodAptBootstrapShell()}
       ${devPodCloneRepoShell()}
