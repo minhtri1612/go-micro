@@ -143,5 +143,5 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "minhtri1612"})
+	c.JSON(http.StatusOK, gin.H{"message": "tritran"})
 }
