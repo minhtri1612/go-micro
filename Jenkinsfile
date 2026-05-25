@@ -173,6 +173,40 @@ pipeline {
       }
     }
 
+    // Đợi ArgoCD apply tag mới vào Rollout TRƯỚC khi tests + Promote chạy.
+    // Tránh race condition: Jenkins promote ngay sau Push Git → ArgoCD chưa sync → kubectl promote
+    // chạy trên Rollout phiên bản cũ (no-op) → pipeline báo SUCCESS nhưng deployment mới kẹt ở canary pause.
+    // ArgoCD auto-sync interval mặc định 3 phút → đợi tối đa 5 phút (soft-fail nếu rollout chưa tồn tại).
+    stage('Wait Argo Sync') {
+      when {
+        allOf {
+          expression { libPrecheck.pipelineNeedsImageBuild() }
+          expression { params.PUSH_GIT == true }
+          expression { !libBuild.isSkipImageBuild() }
+          expression { libPrecheck.pipelineNeedsQualityGates() }
+        }
+      }
+      steps {
+        script {
+          def expected = libBuild.getBuiltRolloutServiceTags()
+          if (expected.isEmpty()) {
+            echo 'Không có rollout service vừa build (chỉ client?) → skip wait.'
+            return
+          }
+          echo "Đợi ArgoCD sync ${expected.size()} rollout(s): ${expected.collect { k, v -> "${k}→${v}" }.join(', ')}"
+          expected.each { svc, tag ->
+            libRollback.waitForRolloutImageTag(
+              params.DEV_KUBE_CONTEXT,
+              params.ROLLOUT_NAMESPACE,
+              svc,
+              tag,
+              300
+            )
+          }
+        }
+      }
+    }
+
     stage('Prepare') {
       when {
         expression { libPrecheck.pipelineNeedsQualityGates() }

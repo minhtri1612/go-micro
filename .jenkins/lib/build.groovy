@@ -69,6 +69,30 @@ def runImageBuildSteps() {
   }
 }
 
+/**
+ * Trả về Map<service, expected-tag> cho các service vừa build (loại trừ `client`).
+ * Dùng để stage 'Wait Argo Sync' biết tag nào cần đợi ArgoCD apply vào rollout.
+ * Đọc thẳng từ env/<env>.yaml — runImageBuildSteps đã ghi tag chính xác (semver+sha) sau khi image lên Hub.
+ */
+def getBuiltRolloutServiceTags() {
+  def envFile = "env/${params.TARGET_ENV}.yaml"
+  def src = env.DETECTED_SERVICES?.trim() ?: resolveBuildServicesList()
+  def result = [:]
+  if (!src?.trim()) {
+    return result
+  }
+  src.tokenize().findAll { it && it != 'client' }.each { svc ->
+    def tag = sh(
+      script: "bash scripts/ci/read-env-tag.sh '${envFile}' '${svc}'",
+      returnStdout: true
+    ).trim()
+    if (tag) {
+      result[svc] = tag
+    }
+  }
+  return result
+}
+
 def runCiGitPushSteps() {
   def envFile = "env/${params.TARGET_ENV}.yaml"
   withCredentials([usernamePassword(
