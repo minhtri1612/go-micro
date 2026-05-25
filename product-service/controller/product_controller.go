@@ -139,7 +139,7 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "hihihihi"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "hihihihihihi"})
 		return
 	}
 
