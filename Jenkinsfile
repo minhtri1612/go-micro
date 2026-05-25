@@ -242,23 +242,36 @@ pipeline {
     stage('Rollout Decision Gate') {
       when {
         allOf {
-          expression { pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' || params.PIPELINE_SCOPE == 'auto') }
+          expression {
+            (pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE in ['full', 'build-and-full', 'auto'])) ||
+            params.PIPELINE_SCOPE == 'rollback'
+          }
           expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
           expression { params.AUTO_PROMOTE == false && params.ENABLE_MANUAL_ROLLOUT_GATE == true }
         }
       }
       steps {
         script {
-          echo "--- QUALITY GATES PASSED ---"
-          echo "Chờ chọn hành động rollout cho service: ${env.RESOLVED_ROLLOUT_SERVICE}"
+          def isRollback = params.PIPELINE_SCOPE == 'rollback'
+          if (isRollback) {
+            echo "--- ROLLBACK SYNC PASSED ---"
+            echo "Argo CD đã sync rollout về tag cũ. Bấm Promote để tiến tới 100% stable."
+          } else {
+            echo "--- QUALITY GATES PASSED ---"
+            echo "Chờ chọn hành động rollout cho service: ${env.RESOLVED_ROLLOUT_SERVICE}"
+          }
           def rawDecision = null
+          def msg = isRollback ?
+            "Rollback [${env.RESOLVED_ROLLOUT_SERVICE}] đã sync. Promote để hoàn tất, Abort để dừng (giữ canary)." :
+            "Quality gate PASS cho [${env.RESOLVED_ROLLOUT_SERVICE}]. Chọn Promote hoặc Rollback."
+          def choices = isRollback ? ['Promote to stable', 'Abort rollout'] : ['Promote to stable', 'Rollback now']
           timeout(time: 30, unit: 'MINUTES') {
             rawDecision = input(
               id: "rollout-decision-${env.BUILD_NUMBER}",
-              message: "Quality gate PASS cho [${env.RESOLVED_ROLLOUT_SERVICE}]. Chọn Promote hoặc Rollback.",
+              message: msg,
               ok: 'Xác nhận',
               parameters: [
-                choice(name: 'ROLLOUT_ACTION', choices: ['Promote to stable', 'Rollback now'], description: 'Hành động rollout')
+                choice(name: 'ROLLOUT_ACTION', choices: choices, description: 'Hành động rollout')
               ]
             )
           }
@@ -270,6 +283,9 @@ pipeline {
             rollbackGitTags("env/${params.TARGET_ENV}.yaml")
             runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
             error("Manual decision = rollback. Rollout đã abort theo yêu cầu.")
+          } else if (decision == 'Abort rollout') {
+            runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+            error("Manual decision = abort (rollback scope). Rollout đã abort — env/ giữ tag mới (đã rollback).")
           } else if (decision == 'Promote to stable') {
             runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
             waitRolloutComplete(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE)
@@ -284,7 +300,10 @@ pipeline {
     stage('Promote Rollout') {
       when {
         allOf {
-          expression { pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE == 'full' || params.PIPELINE_SCOPE == 'build-and-full' || params.PIPELINE_SCOPE == 'auto') }
+          expression {
+            (pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE in ['full', 'build-and-full', 'auto'])) ||
+            params.PIPELINE_SCOPE == 'rollback'
+          }
           expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
           expression { params.AUTO_PROMOTE == true }
         }
@@ -568,6 +587,9 @@ def runRollbackSteps() {
   echo "Rollback targets (${envFile}): ${svcs.join(', ')}"
   env.ROLLBACK_ALREADY_HANDLED = 'true'
 
+  // Map service → expected tag mới (sau decrement) để đợi Argo sync
+  def expectedTags = [:]
+
   withCredentials([usernamePassword(
     credentialsId: 'github-go-micro-pat',
     usernameVariable: 'GH_USER',
@@ -597,6 +619,7 @@ def runRollbackSteps() {
 
       sh "bash scripts/ci/write-service-tag.sh '${envFile}' '${svc}' '${prevTag}'"
       echo "${svc}: yaml → ${prevTag}"
+      expectedTags[svc] = prevTag
     }
 
     if (params.PUSH_GIT != true && params.PUSH_GIT != 'true') {
@@ -619,6 +642,44 @@ def runRollbackSteps() {
   }
 
   echo 'Rollback Git xong — ArgoCD sync tag cũ (patch-1 so với tag hiện tại trong env/).'
+
+  // Đợi Argo CD sync rollout sang tag mới + enter Paused (canary pause: {})
+  // Chỉ set RESOLVED_ROLLOUT_SERVICE khi rollback đúng 1 service → Rollout Decision Gate có target.
+  if (svcs.size() == 1) {
+    def svc = svcs[0]
+    def expectedTag = expectedTags[svc]
+    env.RESOLVED_ROLLOUT_SERVICE = svc
+    echo "Đợi ArgoCD sync rollout '${svc}' → image tag '${expectedTag}' (timeout 300s)..."
+    waitForRolloutImageTag(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, svc, expectedTag, 300)
+  } else {
+    echo "Rollback ${svcs.size()} services — bỏ qua Rollout Decision Gate (không có target duy nhất). Promote tay từng service nếu cần."
+  }
+}
+
+/** Poll kubectl rollout cho đến khi image (tag suffix) match expectedTag. Fail soft sau timeout. */
+def waitForRolloutImageTag(String kubeContext, String namespace, String service, String expectedTag, int timeoutSec) {
+  def status = sh(
+    returnStatus: true,
+    script: """
+      set +e
+      end=\$(( \$(date +%s) + ${timeoutSec} ))
+      while [ \$(date +%s) -lt \$end ]; do
+        img=\$(kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} \\
+          -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo '')
+        case "\$img" in
+          *:${expectedTag})
+            echo "Rollout ${service} image = \$img (matched ${expectedTag})"
+            exit 0
+            ;;
+        esac
+        echo "  ... rollout image=\$img, chờ ${expectedTag}..."
+        sleep 10
+      done
+      echo "[WARN] timeout ${timeoutSec}s — rollout chưa sync sang ${expectedTag}; vẫn cho gate hiển thị (bấm Promote sau khi Argo sync)."
+      exit 0
+    """
+  )
+  return status == 0
 }
 
 def saveEnvFileSnapshot(String envFile) {
