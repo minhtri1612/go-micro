@@ -111,16 +111,16 @@ rollout:
     steps:
       - setWeight: 1
       - pause:
-          duration: 60s
+          duration: 30s
       - setWeight: 20
       - pause:
-          duration: 120s
+          duration: 30s
       - setWeight: 50
       - pause:
-          duration: 120s
+          duration: 30s
       - setWeight: 80
       - pause:
-          duration: 120s
+          duration: 30s
       - setWeight: 100
   blueGreen:
     activeService: ""

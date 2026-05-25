@@ -39,15 +39,15 @@ rollout:
     steps:
       - setWeight: 1
       - pause:
-          duration: 1m
+          duration: 30s
       - setWeight: 20
       - pause: {}
       - setWeight: 50
       - pause:
-          duration: 2m
+          duration: 30s
       - setWeight: 80
       - pause:
-          duration: 2m
+          duration: 30s
       - setWeight: 100
 
 product:
