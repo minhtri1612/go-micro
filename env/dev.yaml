@@ -4,7 +4,7 @@ env: dev
 
 product:
   image:
-    tag: "product-service-v1.0.4-71e61b6"
+    tag: "product-service-v1.0.5-2872b68"
   replicaCount: 5
   rollout:
     enabled: true
