@@ -6,6 +6,17 @@
 //   ci: bump [skip ci] (SCM) → SKIP (tránh loop); Build Now (user) → test+promote tag env/.
 //   build-only / full — override thủ công khi cần.
 // Credentials: dockerhub-credentials, github-go-micro-pat (bắt buộc cho PUSH_GIT).
+//
+// Refactor: helpers tách sang `.jenkins/lib/*.groovy` (load ở stage Init); Jenkinsfile chỉ còn stage definition.
+//   .jenkins/lib/precheck.groovy → scope detection + precheck
+//   .jenkins/lib/build.groovy    → image build + git push
+//   .jenkins/lib/rollback.groovy → rollback + promote/abort + wait rollout
+//   .jenkins/lib/tests.groovy    → dependency / business / route / k6 / k8s-node + prepare helpers
+
+def libPrecheck
+def libBuild
+def libRollback
+def libTests
 
 pipeline {
   agent {
@@ -34,6 +45,11 @@ pipeline {
       description: 'PIPELINE_SCOPE=rollback: service cần rollback (vd: payment). Để trống = rollback product,inventory,order,payment,noti (không gồm client).'
     )
     choice(name: 'TARGET_ENV', choices: ['dev', 'staging'], description: 'env/<TARGET_ENV>.yaml — dùng khi scope có build.')
+    string(
+      name: 'ROLLBACK_VERSION',
+      defaultValue: '',
+      description: 'Rollback về semver CỤ THỂ, vd: v1.0.2 (hoặc 1.0.2 — tự thêm v). Chỉ áp dụng khi ROLLBACK_SERVICE chỉ định 1 service. Để trống = tự động patch-1 từ tag hiện tại trong env/.'
+    )
     choice(
       name: 'BUILD_SERVICES',
       choices: ['auto', 'all', 'product', 'inventory', 'order', 'payment', 'noti', 'client'],
@@ -86,12 +102,19 @@ pipeline {
   }
 
   stages {
-    stage('Checkout') {
-      when {
-        expression { pipelineNeedsCheckout() }
-      }
+    // Stage Init: luôn chạy. Declarative SCM đã clone repo trước stages → load 4 file lib có sẵn.
+    // Khi PIPELINE_SCOPE không cần Checkout fresh (vd dependency-only), libs vẫn được load từ workspace
+    // đã có sẵn từ Declarative checkout — tránh null reference ở when{} các stage sau.
+    stage('Init') {
       steps {
         checkout scm
+        script {
+          libPrecheck = load '.jenkins/lib/precheck.groovy'
+          libBuild    = load '.jenkins/lib/build.groovy'
+          libRollback = load '.jenkins/lib/rollback.groovy'
+          libTests    = load '.jenkins/lib/tests.groovy'
+          echo 'Loaded helpers: precheck / build / rollback / tests'
+        }
       }
     }
 
@@ -101,32 +124,32 @@ pipeline {
       }
       steps {
         script {
-          runRollbackSteps()
+          libRollback.runRollbackSteps()
         }
       }
     }
 
     stage('Precheck') {
       when {
-        expression { pipelineNeedsPrecheck() }
+        expression { libPrecheck.pipelineNeedsPrecheck() }
       }
       steps {
         script {
-          precheckPipeline()
+          libPrecheck.precheckPipeline()
         }
       }
     }
 
     stage('Build & push images') {
       when {
-        expression { pipelineNeedsImageBuild() }
+        expression { libPrecheck.pipelineNeedsImageBuild() }
       }
       steps {
         script {
-          if (isSkipImageBuild()) {
+          if (libBuild.isSkipImageBuild()) {
             echo "Build skipped (Precheck). SKIP_IMAGE_BUILD=${env.SKIP_IMAGE_BUILD ?: '(unset)'}"
           } else {
-            runImageBuildSteps()
+            libBuild.runImageBuildSteps()
           }
         }
       }
@@ -135,16 +158,16 @@ pipeline {
     stage('Push Git') {
       when {
         allOf {
-          expression { pipelineNeedsImageBuild() }
+          expression { libPrecheck.pipelineNeedsImageBuild() }
           expression { params.PUSH_GIT == true }
         }
       }
       steps {
         script {
-          if (isSkipImageBuild()) {
+          if (libBuild.isSkipImageBuild()) {
             echo 'Push Git skipped (không có build).'
           } else {
-            runCiGitPushSteps()
+            libBuild.runCiGitPushSteps()
           }
         }
       }
@@ -152,18 +175,18 @@ pipeline {
 
     stage('Prepare') {
       when {
-        expression { pipelineNeedsQualityGates() }
+        expression { libPrecheck.pipelineNeedsQualityGates() }
       }
       steps {
         sh 'kubectl version --client'
         script {
-          validateKubeContext(params.DEV_KUBE_CONTEXT)
-          env.RESOLVED_ROLLOUT_SERVICE = resolveRolloutService(params.ROLLOUT_SERVICE, getEffectiveDependencyServices(), getEffectiveBusinessServices())
-          env.EFFECTIVE_ROUTE_PREFIX = resolveEffectiveRoutePrefix(params.ROUTE_PREFIX, getEffectiveDependencyServices(), getEffectiveBusinessServices())
+          libTests.validateKubeContext(params.DEV_KUBE_CONTEXT)
+          env.RESOLVED_ROLLOUT_SERVICE = libTests.resolveRolloutService(params.ROLLOUT_SERVICE, libTests.getEffectiveDependencyServices(), libTests.getEffectiveBusinessServices())
+          env.EFFECTIVE_ROUTE_PREFIX = libTests.resolveEffectiveRoutePrefix(params.ROUTE_PREFIX, libTests.getEffectiveDependencyServices(), libTests.getEffectiveBusinessServices())
           echo "Execution mode: ${env.EFFECTIVE_EXECUTION_MODE}"
           echo "Rollout target: ${params.ROLLOUT_NAMESPACE}/${env.RESOLVED_ROLLOUT_SERVICE ?: '(none)'}"
           echo "Route smoke prefix: ${env.EFFECTIVE_ROUTE_PREFIX} (ROUTE_PREFIX param='${params.ROUTE_PREFIX}')"
-          def autoCanary = detectAutoCanaryHeaderForTests()
+          def autoCanary = libTests.detectAutoCanaryHeaderForTests()
           env.AUTO_CANARY_HEADER_FOR_TESTS = autoCanary ? 'true' : 'false'
           if (autoCanary) {
             echo 'Canary pause: stable chưa có backend — test dùng X-Canary (không cần promote tay trước Jenkins).'
@@ -176,13 +199,13 @@ pipeline {
       when {
         allOf {
           expression { params.ENABLE_K8S_NODE_CHECK == true }
-          expression { pipelineNeedsQualityGates() && params.PIPELINE_SCOPE != 'load-only' }
+          expression { libPrecheck.pipelineNeedsQualityGates() && params.PIPELINE_SCOPE != 'load-only' }
         }
       }
       steps {
         script {
           sh "kubectl --context ${params.DEV_KUBE_CONTEXT} apply -f tests/k8s-node-check/rbac.yaml"
-          runK8sNodeCheckSteps()
+          libTests.runK8sNodeCheckSteps()
         }
       }
     }
@@ -190,26 +213,26 @@ pipeline {
     // Một khối parallel duy nhất — không tạo stage trùng tên ở ngoài (Blue Ocean sẽ không rời rạc).
     stage('Parallel tests') {
       when {
-        expression { pipelineNeedsParallelTests() }
+        expression { libPrecheck.pipelineNeedsParallelTests() }
       }
       parallel {
         stage('Dependency Check') {
           when {
-            expression { pipelineNeedsDependencyCheck() }
+            expression { libPrecheck.pipelineNeedsDependencyCheck() }
           }
           steps {
             script {
-              runDependencyCheckSteps()
+              libTests.runDependencyCheckSteps()
             }
           }
         }
         stage('Business Smoke Test') {
           when {
-            expression { pipelineNeedsBusinessSmoke() }
+            expression { libPrecheck.pipelineNeedsBusinessSmoke() }
           }
           steps {
             script {
-              runBusinessSmokeSteps()
+              libTests.runBusinessSmokeSteps()
             }
           }
         }
@@ -217,22 +240,22 @@ pipeline {
           when {
             allOf {
               expression { params.ROUTE_SMOKE != false && params.ROUTE_SMOKE != 'false' }
-              expression { pipelineNeedsRouteSmoke() }
+              expression { libPrecheck.pipelineNeedsRouteSmoke() }
             }
           }
           steps {
             script {
-              runRouteSmokeSteps()
+              libTests.runRouteSmokeSteps()
             }
           }
         }
         stage('Load Test (k6)') {
           when {
-            expression { pipelineNeedsK6Load() }
+            expression { libPrecheck.pipelineNeedsK6Load() }
           }
           steps {
             script {
-              runK6LoadSteps()
+              libTests.runK6LoadSteps()
             }
           }
         }
@@ -243,7 +266,7 @@ pipeline {
       when {
         allOf {
           expression {
-            (pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE in ['full', 'build-and-full', 'auto'])) ||
+            (libPrecheck.pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE in ['full', 'build-and-full', 'auto'])) ||
             params.PIPELINE_SCOPE == 'rollback'
           }
           expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
@@ -280,15 +303,15 @@ pipeline {
           echo "Rollout manual choice: ${decision}"
           if (decision == 'Rollback now') {
             env.ROLLBACK_ALREADY_HANDLED = 'true'
-            rollbackGitTags("env/${params.TARGET_ENV}.yaml")
-            runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+            libRollback.rollbackGitTags("env/${params.TARGET_ENV}.yaml")
+            libRollback.runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
             error("Manual decision = rollback. Rollout đã abort theo yêu cầu.")
           } else if (decision == 'Abort rollout') {
-            runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+            libRollback.runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
             error("Manual decision = abort (rollback scope). Rollout đã abort — env/ giữ tag mới (đã rollback).")
           } else if (decision == 'Promote to stable') {
-            runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
-            waitRolloutComplete(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE)
+            libRollback.runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
+            libRollback.waitRolloutComplete(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE)
             env.ROLLOUT_PROMOTED = 'true'
           } else {
             error("Unexpected ROLLOUT_ACTION value: '${decision}'")
@@ -301,7 +324,7 @@ pipeline {
       when {
         allOf {
           expression {
-            (pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE in ['full', 'build-and-full', 'auto'])) ||
+            (libPrecheck.pipelineNeedsQualityGates() && (params.PIPELINE_SCOPE in ['full', 'build-and-full', 'auto'])) ||
             params.PIPELINE_SCOPE == 'rollback'
           }
           expression { env.RESOLVED_ROLLOUT_SERVICE?.trim() }
@@ -310,8 +333,8 @@ pipeline {
       }
       steps {
         script {
-          runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
-          waitRolloutComplete(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE)
+          libRollback.runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'promote')
+          libRollback.waitRolloutComplete(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE)
           env.ROLLOUT_PROMOTED = 'true'
         }
       }
@@ -328,7 +351,7 @@ pipeline {
       }
       steps {
         script {
-          runEmergencyRollbackGateSteps()
+          libRollback.runEmergencyRollbackGateSteps()
         }
       }
     }
@@ -337,11 +360,11 @@ pipeline {
   post {
     failure {
       script {
-        if (shouldAutoAbortRolloutOnFailure()) {
+        if (libRollback != null && libRollback.shouldAutoAbortRolloutOnFailure()) {
           echo "AUTO_ABORT: abort rollout ${env.RESOLVED_ROLLOUT_SERVICE}"
-          rollbackGitTags("env/${params.TARGET_ENV}.yaml")
-          runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
-        } else if (pipelineNeedsQualityGates() && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
+          libRollback.rollbackGitTags("env/${params.TARGET_ENV}.yaml")
+          libRollback.runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+        } else if (libRollback != null && libPrecheck != null && libPrecheck.pipelineNeedsQualityGates() && !params.AUTO_ABORT && env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
           def failDecision = params.ON_FAILURE_MANUAL_ACTION ?: 'Rollback now'
           def rawFail = null
           timeout(time: 20, unit: 'MINUTES') {
@@ -357,8 +380,8 @@ pipeline {
           failDecision = (rawFail instanceof Map) ? rawFail['FAILURE_ACTION']?.toString() : rawFail?.toString()
           echo "Failure manual choice: ${failDecision}"
           if (failDecision == 'Rollback now') {
-            rollbackGitTags("env/${params.TARGET_ENV}.yaml")
-            runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
+            libRollback.rollbackGitTags("env/${params.TARGET_ENV}.yaml")
+            libRollback.runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
           } else {
             echo "Manual failure action: none (giữ nguyên rollout state)"
           }
@@ -370,934 +393,5 @@ pipeline {
     always {
       deleteDir()
     }
-  }
-}
-
-def isUserTriggeredBuild() {
-  return currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')?.size() > 0
-}
-
-def isSkipImageBuild() {
-  return (env.SKIP_IMAGE_BUILD ?: '').toString() == 'true'
-}
-
-def isSkipQualityGates() {
-  return (env.SKIP_QUALITY_GATES ?: '').toString() == 'true'
-}
-
-def pipelineNeedsCheckout() {
-  return params.PIPELINE_SCOPE in ['auto', 'build-only', 'build-and-full', 'full', 'rollback']
-}
-
-def pipelineNeedsPrecheck() {
-  return params.PIPELINE_SCOPE in ['auto', 'build-only', 'build-and-full']
-}
-
-def pipelineNeedsImageBuild() {
-  return params.PIPELINE_SCOPE in ['auto', 'build-only', 'build-and-full']
-}
-
-def pipelineNeedsQualityGates() {
-  def s = params.PIPELINE_SCOPE
-  if (s == 'build-only') {
-    return false
-  }
-  if (s in ['dependency-only', 'business-only', 'route-smoke-only', 'load-only', 'full', 'build-and-full']) {
-    return true
-  }
-  if (s == 'auto') {
-    return !isSkipQualityGates()
-  }
-  return false
-}
-
-def pipelineNeedsParallelTests() {
-  def s = params.PIPELINE_SCOPE
-  if (s in ['dependency-only', 'business-only', 'route-smoke-only', 'load-only']) {
-    return true
-  }
-  return pipelineNeedsQualityGates() && (s in ['full', 'build-and-full', 'auto'])
-}
-
-def pipelineNeedsDependencyCheck() {
-  def s = params.PIPELINE_SCOPE
-  return s == 'dependency-only' || (pipelineNeedsQualityGates() && s in ['full', 'build-and-full', 'auto'])
-}
-
-def pipelineNeedsBusinessSmoke() {
-  def s = params.PIPELINE_SCOPE
-  return s == 'business-only' || (pipelineNeedsQualityGates() && s in ['full', 'build-and-full', 'auto'])
-}
-
-def pipelineNeedsRouteSmoke() {
-  def s = params.PIPELINE_SCOPE
-  return s == 'route-smoke-only' || (pipelineNeedsQualityGates() && s in ['full', 'build-and-full', 'auto'])
-}
-
-def pipelineNeedsK6Load() {
-  def s = params.PIPELINE_SCOPE
-  return s == 'load-only' || (pipelineNeedsQualityGates() && s in ['full', 'build-and-full', 'auto'])
-}
-
-def getEffectiveDependencyServices() {
-  return env.EFFECTIVE_DEPENDENCY_SERVICES?.trim() ?: params.DEPENDENCY_SERVICES
-}
-
-def getEffectiveBusinessServices() {
-  return env.EFFECTIVE_BUSINESS_SERVICES?.trim() ?: params.BUSINESS_SERVICES
-}
-
-def handleEnvOnlyDeploy(String envFile) {
-  def changed = sh(script: "bash scripts/ci/detect-env-changed-services.sh '${envFile}'", returnStdout: true).trim()
-  if (!changed) {
-    changed = sh(script: "bash scripts/ci/list-env-app-services.sh '${envFile}'", returnStdout: true).trim()
-    echo "env/: kiểm tra Hub cho mọi app service trong ${envFile}"
-  }
-  echo "env deploy targets: ${changed.replaceAll('\\n', ' ')}"
-  // Không nhét list service vào 1 dòng sh (newline → shell chạy inventory/noti như lệnh lẻ).
-  def verifyRc = sh(
-    script: "bash scripts/ci/verify-env-tags-on-hub.sh '${envFile}'",
-    returnStatus: true
-  )
-  if (verifyRc != 0) {
-    error('Tag trong env/ chưa có trên Docker Hub — build image trước hoặc sửa tag cho đúng Hub.')
-  }
-  env.SKIP_IMAGE_BUILD = 'true'
-  env.SKIP_QUALITY_GATES = 'false'
-  applyAutoTestTargets(changed)
-  currentBuild.description = "env/ tags on Hub → test+promote [${changed}]"
-  echo 'Skip Build + Push Git (tag đã trên Hub). Đảm bảo Argo đã sync Git env/ → chạy test + promote.'
-}
-
-def applyAutoTestTargets(String detected) {
-  def rolloutList = detected.tokenize().findAll { it != 'client' }
-  if (rolloutList.size() == 1) {
-    env.EFFECTIVE_DEPENDENCY_SERVICES = rolloutList[0]
-    env.EFFECTIVE_BUSINESS_SERVICES = rolloutList[0]
-    echo "auto: test + promote target → ${rolloutList[0]}"
-  } else if (rolloutList.size() > 1) {
-    echo "auto: build [${detected}] — test dùng DEPENDENCY/BUSINESS trên Jenkins (mặc định all)"
-  }
-}
-
-def precheckPipeline() {
-  env.SKIP_IMAGE_BUILD = 'false'
-  env.SKIP_QUALITY_GATES = 'false'
-  env.DETECTED_SERVICES = ''
-  if (params.PIPELINE_SCOPE == 'build-only') {
-    echo 'Gợi ý: commit chỉ Jenkinsfile/env → dùng PIPELINE_SCOPE=auto hoặc bật DEPLOY_EXISTING_ENV_TAGS.'
-  }
-  if (params.DEPLOY_EXISTING_ENV_TAGS == true || params.DEPLOY_EXISTING_ENV_TAGS == 'true') {
-    handleEnvOnlyDeploy("env/${params.TARGET_ENV}.yaml")
-    return
-  }
-  def msg = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
-  if (msg ==~ /(?i)^ci:\s*(bump|rollback)\b.*/ || msg.contains('[skip ci]')) {
-    if (isUserTriggeredBuild()) {
-      echo "Build tay trên commit CI — không build Docker lại; test+promote tag trong env/${params.TARGET_ENV}.yaml"
-      echo "  HEAD: '${msg}'"
-      handleEnvOnlyDeploy("env/${params.TARGET_ENV}.yaml")
-      return
-    }
-    env.SKIP_IMAGE_BUILD = 'true'
-    env.SKIP_QUALITY_GATES = 'true'
-    currentBuild.description = 'Skipped: ci [skip ci] commit (tránh vòng lặp webhook)'
-    echo "SKIP all (SCM/auto trên commit CI): '${msg}'"
-    echo 'Muốn chạy test/promote: Build Now (tay) hoặc bật DEPLOY_EXISTING_ENV_TAGS / PIPELINE_SCOPE=full.'
-    return
-  }
-
-  if (params.PIPELINE_SCOPE == 'auto') {
-    def mode = sh(script: 'bash scripts/ci/detect-commit-mode.sh', returnStdout: true).trim()
-    def detected = sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
-    echo "auto: mode=${mode}, services='${detected}'"
-    if (mode == 'service' && detected) {
-      env.SKIP_IMAGE_BUILD = 'false'
-      env.SKIP_QUALITY_GATES = 'false'
-      env.DETECTED_SERVICES = detected
-      applyAutoTestTargets(detected)
-      currentBuild.description = "auto: build+test [${detected}]"
-      return
-    }
-    if (mode == 'env-only') {
-      handleEnvOnlyDeploy("env/${params.TARGET_ENV}.yaml")
-      return
-    }
-    // Chỉ Jenkinsfile/scripts — skip build, VẪN chạy test+promote với tag trong env/ (không vứt Parallel tests).
-    echo 'auto: mode=none — commit không đổi *-service/ hay env/ trong diff; dùng tag hiện tại env/ + verify Hub.'
-    sh 'git show -1 --name-only --pretty=format:"  %h %s"'
-    handleEnvOnlyDeploy("env/${params.TARGET_ENV}.yaml")
-    return
-  }
-
-  precheckLegacyBuildScope()
-}
-
-def precheckLegacyBuildScope() {
-  if (params.BUILD_SERVICES == 'auto') {
-    def detected = sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
-    if (!detected) {
-      env.SKIP_IMAGE_BUILD = 'true'
-      env.SKIP_QUALITY_GATES = 'true'
-      currentBuild.description = 'Skipped: không có *-service/ trong commit'
-      echo 'SKIP build: BUILD_SERVICES=auto, không có service đổi'
-      sh 'git show -1 --name-only --pretty=format:"  %h %s"'
-      return
-    }
-    env.DETECTED_SERVICES = detected
-    echo "build scope → ${detected}"
-  }
-  env.SKIP_IMAGE_BUILD = 'false'
-  env.SKIP_QUALITY_GATES = (params.PIPELINE_SCOPE == 'build-only') ? 'true' : 'false'
-}
-
-def resolveBuildServicesList() {
-  if (env.DETECTED_SERVICES?.trim()) {
-    return env.DETECTED_SERVICES.trim()
-  }
-  def allSvcs = 'product inventory order payment noti client'
-  if (params.BUILD_SERVICES == 'all') {
-    return allSvcs
-  }
-  if (params.BUILD_SERVICES == 'auto') {
-    return sh(script: 'bash scripts/ci/detect-changed-services.sh', returnStdout: true).trim()
-  }
-  return params.BUILD_SERVICES?.trim() ?: ''
-}
-
-def runRollbackSteps() {
-  def envFile = "env/${params.TARGET_ENV}.yaml"
-  def targetSvc = params.ROLLBACK_SERVICE?.trim()?.toLowerCase()
-
-  def svcs = []
-  if (targetSvc) {
-    svcs = [targetSvc]
-  } else {
-    def all = sh(
-      script: "bash scripts/ci/list-env-app-services.sh '${envFile}'",
-      returnStdout: true
-    ).trim()
-    svcs = all.tokenize().findAll { it && it != 'client' }
-  }
-
-  if (svcs.isEmpty()) {
-    error('Không có service nào để rollback.')
-  }
-
-  echo "Rollback targets (${envFile}): ${svcs.join(', ')}"
-  env.ROLLBACK_ALREADY_HANDLED = 'true'
-
-  // Map service → expected tag mới (sau decrement) để đợi Argo sync
-  def expectedTags = [:]
-
-  withCredentials([usernamePassword(
-    credentialsId: 'github-go-micro-pat',
-    usernameVariable: 'GH_USER',
-    passwordVariable: 'GH_TOKEN'
-  )]) {
-    svcs.each { svc ->
-      def currentTag = sh(
-        script: "bash scripts/ci/read-env-tag.sh '${envFile}' '${svc}'",
-        returnStdout: true
-      ).trim()
-      echo "${svc} current tag (Git/env): ${currentTag}"
-
-      def prevTag = sh(
-        script: "bash scripts/ci/decrement-tag.sh '${currentTag}'",
-        returnStdout: true
-      ).trim()
-
-      echo "${svc}: ${currentTag} → ${prevTag}"
-
-      def onHub = sh(
-        script: "bash scripts/ci/image-exists-on-hub.sh '${prevTag}'",
-        returnStatus: true
-      ) == 0
-      if (!onHub) {
-        error("${svc}: tag ${prevTag} không có trên Docker Hub — không rollback được.")
-      }
-
-      sh "bash scripts/ci/write-service-tag.sh '${envFile}' '${svc}' '${prevTag}'"
-      echo "${svc}: yaml → ${prevTag}"
-      expectedTags[svc] = prevTag
-    }
-
-    if (params.PUSH_GIT != true && params.PUSH_GIT != 'true') {
-      echo 'PUSH_GIT=false — yaml đã sửa trên workspace; push Git thủ công hoặc bật PUSH_GIT.'
-      return
-    }
-
-    sh """
-      set -e
-      git config user.email 'jenkins@go-micro.local'
-      git config user.name 'jenkins-ci'
-      git add '${envFile}'
-      if git diff --cached --quiet; then
-        echo 'Nothing to rollback (yaml không đổi).'
-        exit 0
-      fi
-      git commit -m 'ci: rollback tags ${envFile} [${svcs.join(',')}] [skip ci] #${env.BUILD_NUMBER}'
-      git push "https://x-access-token:\${GH_TOKEN}@github.com/minhtri1612/go-micro.git" "HEAD:${params.GIT_BRANCH}"
-    """
-  }
-
-  echo 'Rollback Git xong — ArgoCD sync tag cũ (patch-1 so với tag hiện tại trong env/).'
-
-  // Đợi Argo CD sync rollout sang tag mới + enter Paused (canary pause: {})
-  // Chỉ set RESOLVED_ROLLOUT_SERVICE khi rollback đúng 1 service → Rollout Decision Gate có target.
-  if (svcs.size() == 1) {
-    def svc = svcs[0]
-    def expectedTag = expectedTags[svc]
-    env.RESOLVED_ROLLOUT_SERVICE = svc
-    echo "Đợi ArgoCD sync rollout '${svc}' → image tag '${expectedTag}' (timeout 300s)..."
-    waitForRolloutImageTag(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, svc, expectedTag, 300)
-  } else {
-    echo "Rollback ${svcs.size()} services — bỏ qua Rollout Decision Gate (không có target duy nhất). Promote tay từng service nếu cần."
-  }
-}
-
-/** Poll kubectl rollout cho đến khi image (tag suffix) match expectedTag. Fail soft sau timeout. */
-def waitForRolloutImageTag(String kubeContext, String namespace, String service, String expectedTag, int timeoutSec) {
-  def status = sh(
-    returnStatus: true,
-    script: """
-      set +e
-      end=\$(( \$(date +%s) + ${timeoutSec} ))
-      while [ \$(date +%s) -lt \$end ]; do
-        img=\$(kubectl --context ${kubeContext} -n ${namespace} get rollout ${service} \\
-          -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo '')
-        case "\$img" in
-          *:${expectedTag})
-            echo "Rollout ${service} image = \$img (matched ${expectedTag})"
-            exit 0
-            ;;
-        esac
-        echo "  ... rollout image=\$img, chờ ${expectedTag}..."
-        sleep 10
-      done
-      echo "[WARN] timeout ${timeoutSec}s — rollout chưa sync sang ${expectedTag}; vẫn cho gate hiển thị (bấm Promote sau khi Argo sync)."
-      exit 0
-    """
-  )
-  return status == 0
-}
-
-def saveEnvFileSnapshot(String envFile) {
-  env.ENV_FILE_SNAPSHOT_PATH = envFile
-  env.ENV_FILE_SNAPSHOT = sh(script: "cat '${envFile}'", returnStdout: true)
-  echo "Snapshot saved: ${envFile} (${env.ENV_FILE_SNAPSHOT.length()} bytes)"
-}
-
-def rollbackGitTags(String envFile) {
-  if (!env.ENV_FILE_SNAPSHOT?.trim()) {
-    echo "Không có ENV_FILE_SNAPSHOT — bỏ qua rollback Git tags."
-    return
-  }
-  echo "Reverting ${envFile} về snapshot trước build..."
-  writeFile file: envFile, text: env.ENV_FILE_SNAPSHOT
-  withCredentials([usernamePassword(
-    credentialsId: 'github-go-micro-pat',
-    usernameVariable: 'GH_USER',
-    passwordVariable: 'GH_TOKEN'
-  )]) {
-    sh """
-      set -e
-      git config user.email 'jenkins@go-micro.local'
-      git config user.name 'jenkins-ci'
-      git add '${envFile}'
-      if git diff --cached --quiet; then
-        echo 'Không có gì để rollback (env/ chưa thay đổi so với snapshot).'
-        exit 0
-      fi
-      git commit -m 'ci: rollback tags ${envFile} [skip ci] #${env.BUILD_NUMBER}'
-      git push "https://x-access-token:\${GH_TOKEN}@github.com/minhtri1612/go-micro.git" "HEAD:${params.GIT_BRANCH}"
-    """
-  }
-  echo 'Git rollback xong — ArgoCD sẽ sync lại image tag cũ.'
-}
-
-def runEmergencyRollbackGateSteps() {
-  echo "Rollout [${env.RESOLVED_ROLLOUT_SERVICE}] đã Healthy. Quan sát service; Emergency Rollback nếu cần (timeout 15 phút → giữ nguyên)."
-  def rawDecision = null
-  def timedOut = false
-  try {
-    timeout(time: 15, unit: 'MINUTES') {
-      rawDecision = input(
-        id: "emergency-rollback-${env.BUILD_NUMBER}",
-        message: "Service [${env.RESOLVED_ROLLOUT_SERVICE}] đang chạy sau promote. Xác nhận ổn hoặc Emergency Rollback?",
-        ok: 'Xác nhận',
-        parameters: [
-          choice(
-            name: 'EMERGENCY_ACTION',
-            choices: ['Service OK — keep', 'Emergency Rollback'],
-            description: 'Emergency Rollback = revert tag Git + abort rollout → ArgoCD sync image cũ'
-          )
-        ]
-      )
-    }
-  } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException ignored) {
-    echo 'Timeout 15 phút không phản hồi → mặc định giữ nguyên (Service OK).'
-    timedOut = true
-  }
-
-  if (timedOut) {
-    return
-  }
-
-  def action = (rawDecision instanceof Map)
-    ? rawDecision['EMERGENCY_ACTION']?.toString()
-    : rawDecision?.toString()
-
-  if (action == 'Emergency Rollback') {
-    echo '=== EMERGENCY ROLLBACK ==='
-    env.EMERGENCY_ROLLBACK_DONE = 'true'
-    rollbackGitTags("env/${params.TARGET_ENV}.yaml")
-    runRolloutAction(params.DEV_KUBE_CONTEXT, params.ROLLOUT_NAMESPACE, env.RESOLVED_ROLLOUT_SERVICE, 'abort')
-    error('Emergency rollback: tag Git đã revert, rollout đã abort. ArgoCD sẽ sync image cũ.')
-  }
-  echo 'Service stable confirmed — pipeline complete.'
-}
-
-def runImageBuildSteps() {
-  if (isSkipImageBuild()) {
-    echo 'runImageBuildSteps: skipped.'
-    return
-  }
-  def envFile = "env/${params.TARGET_ENV}.yaml"
-  saveEnvFileSnapshot(envFile)
-  def svcs = resolveBuildServicesList()
-  if (!svcs?.trim()) {
-    echo "Không có service để build (BUILD_SERVICES=${params.BUILD_SERVICES}) — bỏ qua, không fail."
-    env.SKIP_IMAGE_BUILD = 'true'
-    return
-  }
-  withCredentials([usernamePassword(
-    credentialsId: 'dockerhub-credentials',
-    usernameVariable: 'DOCKER_USER',
-    passwordVariable: 'DOCKER_PASS'
-  )]) {
-    sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
-    svcs.split(/\s+/).each { svc ->
-      def tag = sh(script: "bash scripts/ci/bump-image-tag.sh --compute-only '${envFile}' '${svc}'", returnStdout: true).trim()
-      echo "${svc} → build tag ${tag} (Hub+1; env ghi sau khi image sẵn sàng trên Hub)"
-      def onHub = sh(script: "bash scripts/ci/image-exists-on-hub.sh '${tag}'", returnStatus: true) == 0
-      if (onHub) {
-        echo "${svc}: ${tag} đã có trên Hub — skip docker build/push"
-      } else {
-        sh "bash scripts/ci/docker-build-push.sh '${svc}' '${tag}'"
-        def onHubAfter = sh(script: "bash scripts/ci/image-exists-on-hub.sh '${tag}'", returnStatus: true) == 0
-        if (!onHubAfter) {
-          error("${svc}: push Hub thất bại — không ghi tag ${tag} vào ${envFile}")
-        }
-      }
-      sh "bash scripts/ci/write-service-tag.sh '${envFile}' '${svc}' '${tag}'"
-      echo "${svc}: env/${params.TARGET_ENV}.yaml ← ${tag} (đúng tag Hub)"
-    }
-  }
-}
-
-def runCiGitPushSteps() {
-  def envFile = "env/${params.TARGET_ENV}.yaml"
-  withCredentials([usernamePassword(
-    credentialsId: 'github-go-micro-pat',
-    usernameVariable: 'GH_USER',
-    passwordVariable: 'GH_TOKEN'
-  )]) {
-    sh """
-      set -e
-      git config user.email 'jenkins@go-micro.local'
-      git config user.name 'jenkins-ci'
-      git add '${envFile}'
-      if git diff --cached --quiet; then
-        echo 'Nothing to commit'
-        exit 0
-      fi
-      git commit -m 'ci: bump tags in ${envFile} [skip ci] #${env.BUILD_NUMBER}'
-      git push "https://x-access-token:\${GH_TOKEN}@github.com/minhtri1612/go-micro.git" "HEAD:${params.GIT_BRANCH}"
-    """
-  }
-}
-
-def expandServicesCsv(String raw, List allList) {
-  if (raw == null || !raw.trim()) {
-    error('Thiếu DEPENDENCY_SERVICES / BUSINESS_SERVICES (dùng `all` hoặc CSV).')
-  }
-  def t = raw.trim()
-  if (t.equalsIgnoreCase('all')) {
-    return allList
-  }
-  def out = t.split(',').collect { it.trim().toLowerCase() }.findAll { it.length() > 0 }.unique()
-  if (out.isEmpty()) {
-    error('Danh sách service sau khi parse rỗng.')
-  }
-  return out
-}
-
-def runInDevPod(String kubeContext, String namespace, String image, String scriptBody) {
-  String podName = "ci-${env.BUILD_NUMBER}-${java.util.UUID.randomUUID().toString().take(8)}".toLowerCase()
-  String escaped = scriptBody.stripIndent().trim().replace("'", "'\"'\"'")
-  String timeout = (params.POD_WAIT_TIMEOUT ?: '600s').trim()
-  String serviceAccount = (params.DEV_TEST_SERVICE_ACCOUNT ?: 'default').trim()
-  int timeoutSeconds = parseTimeoutSeconds(timeout)
-  sh """#!/bin/sh
-    set -e
-    kubectl --context ${kubeContext} -n ${namespace} run ${podName} --image=${image} --restart=Never --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"${serviceAccount}"}}' --command -- sh -lc '${escaped}'
-    START=\$(date +%s)
-    LASTLOG=\$START
-    ITER=0
-    while true; do
-      ITER=\$((ITER + 1))
-      PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | awk 'NR==1{gsub(\"\\r\",\"\"); gsub(\"\\n\",\"\"); print; exit}' || true)
-      PHASE=\${PHASE:-Unknown}
-      if [ "\$PHASE" = "Succeeded" ] || [ "\$PHASE" = "Failed" ]; then
-        break
-      fi
-      NOW=\$(date +%s)
-      if [ \$((NOW-START)) -ge ${timeoutSeconds} ]; then
-        echo "Pod ${podName} timeout after ${timeout} (current phase=\$PHASE)"
-        PHASE="Timeout"
-        break
-      fi
-      if [ \$((NOW-LASTLOG)) -ge 30 ]; then
-        echo "[wait pod ${podName}] phase=\$PHASE elapsed=\$((NOW-START))s iter=\$ITER"
-        LASTLOG=\$NOW
-      fi
-      sleep 2
-    done
-    kubectl --context ${kubeContext} -n ${namespace} logs ${podName} || true
-    PHASE=\$(kubectl --context ${kubeContext} -n ${namespace} get pod/${podName} -o jsonpath='{.status.phase}' 2>/dev/null | awk 'NR==1{gsub(\"\\r\",\"\"); gsub(\"\\n\",\"\"); print; exit}' || true)
-    PHASE=\${PHASE:-Unknown}
-    if [ "\$PHASE" != "Succeeded" ]; then
-      echo "Pod ${podName} ended with phase \$PHASE (timeout=${timeout})"
-      kubectl --context ${kubeContext} -n ${namespace} describe pod/${podName} || true
-      kubectl --context ${kubeContext} -n ${namespace} delete pod/${podName} --ignore-not-found=true >/dev/null
-      exit 1
-    fi
-    kubectl --context ${kubeContext} -n ${namespace} delete pod/${podName} --ignore-not-found=true >/dev/null
-  """
-}
-
-def runWithMode(String mode, String kubeContext, String namespace, String image, String podScriptBody, String directScriptBody) {
-  if (mode == 'dev-pod') {
-    runInDevPod(kubeContext, namespace, image, podScriptBody)
-    return
-  }
-  sh """
-    set -e
-    ${directScriptBody}
-  """
-}
-
-def parseTimeoutSeconds(String raw) {
-  String t = (raw ?: '600s').trim().toLowerCase()
-  if (!t) {
-    return 600
-  }
-  if (t ==~ /\d+/) {
-    return t.toInteger()
-  }
-  if (t ==~ /\d+s/) {
-    return t[0..-2].toInteger()
-  }
-  if (t ==~ /\d+m/) {
-    return t[0..-2].toInteger() * 60
-  }
-  if (t ==~ /\d+h/) {
-    return t[0..-2].toInteger() * 3600
-  }
-  error("POD_WAIT_TIMEOUT không hợp lệ: '${raw}'. Dùng dạng 300s, 10m, 1h hoặc số giây.")
-}
-
-/** Apk + pip inside ephemeral python-alpine pods. Alpine apk mirrors ổn hơn apt trong kind cluster. */
-def devPodAptBootstrapShell() {
-  return '''set -e
-# Alpine: apk nhanh + ít bị mất kết nối hơn apt trong kind/flannel.
-ok=0
-for attempt in 1 2 3 4; do
-  if apk add --no-cache git ca-certificates 2>&1; then
-    ok=1
-    break
-  fi
-  echo "[WARN] apk add failed (attempt $attempt/4); retry in 10s..." >&2
-  sleep 10
-done
-if [ "$ok" != "1" ]; then
-  echo "[FATAL] apk could not install git after 4 attempts" >&2
-  exit 1
-fi
-command -v git >/dev/null
-pip install --no-cache-dir requests
-'''
-}
-
-/** Shell snippet: clone repo into /tmp/go-micro (retries; do not swallow errors — parallel pods hammer GitHub). */
-def devPodCloneRepoShell() {
-  return '''export GIT_TERMINAL_PROMPT=0
-rm -rf /tmp/go-micro
-for i in 1 2 3 4 5; do
-  if git clone --depth 1 https://github.com/minhtri1612/go-micro.git /tmp/go-micro; then
-    break
-  fi
-  echo "[WARN] git clone failed, retry in 12s ($i/5)"
-  sleep 12
-done
-test -d /tmp/go-micro/tests || { echo "[FATAL] clone missing tests/"; ls -la /tmp || true; exit 1; }
-cd /tmp/go-micro'''
-}
-
-def runDependencyCheckSteps() {
-  def allDep = ['product', 'inventory', 'order', 'payment', 'noti']
-  def svcs = expandServicesCsv(getEffectiveDependencyServices(), allDep)
-  svcs.each { svc ->
-    def canaryHeader = shouldUseCanaryHeaderForService(svc) ? 'true' : 'false'
-    runWithMode(
-      env.EFFECTIVE_EXECUTION_MODE,
-      params.DEV_KUBE_CONTEXT,
-      params.DEV_TEST_NAMESPACE,
-      'python:3.11-alpine',
-      """
-        ${devPodAptBootstrapShell()}
-        ${devPodCloneRepoShell()}
-        CANARY_HEADER=${canaryHeader} python3 tests/dependency-check/run.py ${svc} ${params.BACKEND_IP}
-      """,
-      "CANARY_HEADER=${canaryHeader} python3 tests/dependency-check/run.py ${svc} ${params.BACKEND_IP}"
-    )
-  }
-}
-
-def runBusinessSmokeSteps() {
-  def allBiz = ['product', 'inventory', 'order', 'payment', 'noti']
-  def svcs = expandServicesCsv(getEffectiveBusinessServices(), allBiz)
-  svcs.each { svc ->
-    def canaryHeader = shouldUseCanaryHeaderForService(svc) ? 'true' : 'false'
-    runWithMode(
-      env.EFFECTIVE_EXECUTION_MODE,
-      params.DEV_KUBE_CONTEXT,
-      params.DEV_TEST_NAMESPACE,
-      'python:3.11-alpine',
-      """
-        ${devPodAptBootstrapShell()}
-        ${devPodCloneRepoShell()}
-        CANARY_HEADER=${canaryHeader} python3 tests/business-smoke/run.py ${svc} ${params.BACKEND_IP}
-      """,
-      "CANARY_HEADER=${canaryHeader} python3 tests/business-smoke/run.py ${svc} ${params.BACKEND_IP}"
-    )
-  }
-}
-
-def runRouteSmokeSteps() {
-  runWithMode(
-    env.EFFECTIVE_EXECUTION_MODE,
-    params.DEV_KUBE_CONTEXT,
-    params.DEV_TEST_NAMESPACE,
-    'python:3.11-alpine',
-    """
-      ${devPodAptBootstrapShell()}
-      ${devPodCloneRepoShell()}
-      python3 tests/route-smoke-test/run.py ${params.TARGET_HOST} ${env.EFFECTIVE_ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}
-    """,
-    "python3 tests/route-smoke-test/run.py ${params.TARGET_HOST} ${env.EFFECTIVE_ROUTE_PREFIX} ${params.ROUTE_MODE} ${params.BACKEND_IP}"
-  )
-}
-
-def runK8sNodeCheckSteps() {
-  runWithMode(
-    env.EFFECTIVE_EXECUTION_MODE,
-    params.DEV_KUBE_CONTEXT,
-    params.DEV_TEST_NAMESPACE,
-    'python:3.11-alpine',
-    """
-      ${devPodAptBootstrapShell()}
-      ${devPodCloneRepoShell()}
-      python3 tests/k8s-node-check/run.py
-    """,
-    """
-      pip3 install requests >/dev/null 2>&1 || true
-      python3 tests/k8s-node-check/run.py
-    """
-  )
-}
-
-def runK6LoadSteps() {
-  runWithMode(
-    env.EFFECTIVE_EXECUTION_MODE,
-    params.DEV_KUBE_CONTEXT,
-    params.DEV_TEST_NAMESPACE,
-    'grafana/k6:0.49.0',
-    """
-      cat >/tmp/k6-script.js <<'EOF'
-      import http from 'k6/http';
-      import { check, sleep } from 'k6';
-      const vus = __ENV.VUS || 10;
-      const duration = __ENV.DURATION || '30s';
-      const errorRate = __ENV.ERROR_RATE || '0.1';
-      const service = __ENV.SERVICE_NAME || 'product';
-      const target = __ENV.TARGET_URL || 'localhost';
-      export const options = { vus: vus, duration: duration, thresholds: { http_req_failed: ['rate<' + errorRate], http_req_duration: ['p(95)<2000'] } };
-      function getPrefix(s) { return ({ product:'/api/v1/products', order:'/api/v1/orders', inventory:'/api/v1/inventory', noti:'/api/v1/notifications', payment:'/api/v1/payments', client:'/' }[s] || '/api/v1/products'); }
-      function probePath(s) { if (s === 'client') return '/'; if (s === 'order') return '/orders'; return '/health'; }
-      export default function () { const prefix = getPrefix(service); const path = probePath(service); const params = { headers: { Host: 'dev.go-micro.local' } }; const res = http.get('http://' + target + prefix + path, params); check(res, { 'status is 200': (r) => r.status === 200 }); sleep(0.3); }
-      EOF
-      TARGET_URL=${params.BACKEND_IP} SERVICE_NAME=${params.K6_SERVICE_NAME} VUS=${params.K6_VUS} DURATION=${params.K6_DURATION} ERROR_RATE=${params.K6_ERROR_RATE} k6 run /tmp/k6-script.js
-    """,
-    """docker run --rm \
-      -e TARGET_URL=${params.BACKEND_IP} \
-      -e SERVICE_NAME=${params.K6_SERVICE_NAME} \
-      -e VUS=${params.K6_VUS} \
-      -e DURATION=${params.K6_DURATION} \
-      -e ERROR_RATE=${params.K6_ERROR_RATE} \
-      -v "\$(pwd)/tests/load-test/k6-script.js:/scripts/k6-script.js:ro" \
-      grafana/k6:0.49.0 run /scripts/k6-script.js"""
-  )
-}
-
-def shouldEnableCanaryHeaderForApiTests() {
-  return params.CANARY_HEADER_API_TESTS == true || params.CANARY_HEADER_API_TESTS == 'true'
-}
-
-def shouldAutoAbortRolloutOnFailure() {
-  if (env.EMERGENCY_ROLLBACK_DONE == 'true' || env.ROLLBACK_ALREADY_HANDLED == 'true') {
-    return false
-  }
-  if (!params.AUTO_ABORT) {
-    return false
-  }
-  if (!env.RESOLVED_ROLLOUT_SERVICE?.trim()) {
-    return false
-  }
-  // auto + Parallel: một nhánh fail (vd. dependency) không abort cả rollout — dùng gate Promote/Rollback.
-  return params.PIPELINE_SCOPE in ['full', 'build-and-full']
-}
-
-def shouldUseCanaryHeaderForService(String svc) {
-  if (shouldEnableCanaryHeaderForApiTests() || env.AUTO_CANARY_HEADER_FOR_TESTS == 'true') {
-    return true
-  }
-  return serviceNeedsCanaryHeaderForTests(svc)
-}
-
-def serviceEndpointsReady(String kubeContext, String namespace, String serviceName) {
-  if (!serviceName?.trim()) {
-    return false
-  }
-  def ips = sh(
-    script: "kubectl --context ${kubeContext} -n ${namespace} get endpoints ${serviceName} -o jsonpath='{.subsets[0].addresses[*].ip}' 2>/dev/null || true",
-    returnStdout: true
-  ).trim()
-  return ips.length() > 0
-}
-
-def serviceNeedsCanaryHeaderForTests(String svc) {
-  def ns = params.ROLLOUT_NAMESPACE?.trim()
-  def ctx = params.DEV_KUBE_CONTEXT?.trim()
-  if (!svc?.trim() || !ns || !ctx) {
-    return false
-  }
-  def stableReady = serviceEndpointsReady(ctx, ns, svc)
-  if (stableReady) {
-    return false
-  }
-  def canaryReady = serviceEndpointsReady(ctx, ns, "${svc}-canary")
-  if (!canaryReady) {
-    return false
-  }
-  def phase = sh(
-    script: "kubectl --context ${ctx} -n ${ns} get rollout ${svc} -o jsonpath='{.status.phase}' 2>/dev/null || true",
-    returnStdout: true
-  ).trim()
-  if (phase in ['Paused', 'Progressing']) {
-    echo "auto X-Canary: rollout/${svc} phase=${phase}, stable Endpoints trống, canary có pod — test trước Promote gate."
-    return true
-  }
-  return false
-}
-
-def detectAutoCanaryHeaderForTests() {
-  def probe = env.RESOLVED_ROLLOUT_SERVICE?.trim()
-  if (probe) {
-    return serviceNeedsCanaryHeaderForTests(probe)
-  }
-  def dep = getEffectiveDependencyServices()?.trim()?.toLowerCase()
-  if (dep && dep != 'all' && !dep.contains(',')) {
-    return serviceNeedsCanaryHeaderForTests(dep)
-  }
-  return false
-}
-
-def validateKubeContext(String kubeContext) {
-  String contextsRaw = sh(
-    script: "kubectl config get-contexts -o name || true",
-    returnStdout: true
-  ).trim()
-  List contexts = contextsRaw ? contextsRaw.split('\n').collect { it.trim() } : []
-  if (!contexts.contains(kubeContext.trim())) {
-    error("Không tìm thấy context '${kubeContext}' trong Jenkins KUBECONFIG=${env.KUBECONFIG}. Context hiện có: ${contextsRaw ?: '(none)'}.")
-  }
-}
-
-def serviceToRoutePrefix(String svc) {
-  if (!svc?.trim()) {
-    return '/api/v1/products'
-  }
-  switch (svc.trim().toLowerCase()) {
-    case 'product':
-      return '/api/v1/products'
-    case 'order':
-      return '/api/v1/orders'
-    case 'inventory':
-      return '/api/v1/inventory'
-    case 'noti':
-      return '/api/v1/notifications'
-    case 'payment':
-      return '/api/v1/payments'
-    default:
-      return '/api/v1/products'
-  }
-}
-
-def resolveEffectiveRoutePrefix(String routeParam, String depServices, String bizServices) {
-  def p = routeParam?.trim()
-  if (p && !p.equalsIgnoreCase('auto')) {
-    return p
-  }
-  def b = bizServices?.trim()?.toLowerCase()
-  def d = depServices?.trim()?.toLowerCase()
-  if (b && b != 'all') {
-    return serviceToRoutePrefix(b)
-  }
-  if (d && d != 'all') {
-    return serviceToRoutePrefix(d)
-  }
-  return '/api/v1/products'
-}
-
-def resolveRolloutService(String rolloutService, String depServices, String bizServices) {
-  if (rolloutService != null && rolloutService.trim() && !rolloutService.trim().equalsIgnoreCase('auto')) {
-    return rolloutService.trim().toLowerCase()
-  }
-  def candidates = [] as Set
-  [depServices, bizServices].each { raw ->
-    if (!raw) {
-      return
-    }
-    def t = raw.trim().toLowerCase()
-    if (t == 'all') {
-      return
-    }
-    t.split(',').collect { it.trim() }.findAll { it }.each { candidates << it }
-  }
-  if (candidates.size() == 1) {
-    return candidates.first()
-  }
-  echo "Không thể auto-resolve rollout service (DEP='${depServices}', BIZ='${bizServices}')."
-  echo "Đặt ROLLOUT_SERVICE=<service> để bật promote/abort tự động."
-  return ''
-}
-
-def runRolloutAction(String kubeContext, String namespace, String service, String action) {
-  if (!(action in ['promote', 'abort'])) {
-    error("Unsupported rollout action: ${action}")
-  }
-  sh """
-    set -e
-    if kubectl argo rollouts --context ${kubeContext} version >/dev/null 2>&1; then
-      kubectl argo rollouts --context ${kubeContext} -n ${namespace} ${action} ${service}
-    else
-      echo "kubectl-argo-rollouts not found, fallback to kubectl patch for action=${action}"
-      if [ "${action}" = "promote" ]; then
-        kubectl --context ${kubeContext} -n ${namespace} patch rollout ${service} --type merge -p '{"spec":{"paused":false}}'
-      else
-        kubectl --context ${kubeContext} -n ${namespace} patch rollout ${service} --type merge -p '{"spec":{"paused":true}}'
-      fi
-    fi
-    kubectl --context ${kubeContext} -n ${namespace} get rollout ${service}
-  """
-}
-
-def waitRolloutComplete(String kubeContext, String namespace, String service) {
-  String waitRaw = (params.ROLLOUT_WAIT_TIMEOUT ?: '45m').trim()
-  int waitSec = parseTimeoutSeconds(waitRaw)
-  // Dùng withEnv + sh ''' để Groovy không parse ${…} trong chuỗi (lỗi CPS với --timeout='${waitRaw}').
-  withEnv([
-    'WRC_CTX=' + kubeContext,
-    'WRC_NS=' + namespace,
-    'WRC_SVC=' + service,
-    'WRC_DEADLINE_SEC=' + waitSec.toString(),
-  ]) {
-    sh '''#!/bin/bash
-set -e
-echo "Chờ rollout ${WRC_SVC} tới Healthy sau promote (poll mỗi 5s, tối đa ~${WRC_DEADLINE_SEC}s)..."
-if ! kubectl argo rollouts --context "${WRC_CTX}" version >/dev/null 2>&1; then
-  echo "WARN: không có kubectl-argo-rollouts; dùng kubectl get rollout"
-fi
-deadline=$(( $(date +%s) + ${WRC_DEADLINE_SEC} ))
-last_log=0
-degraded_streak=0
-while [ "$(date +%s)" -lt "$deadline" ]; do
-  ph=""
-  if IFS= read -r ph < <(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath="{.status.phase}" 2>/dev/null); then
-    :
-  fi
-  ph=${ph:-}
-  case "$ph" in
-    Healthy)
-      echo "Rollout Healthy."
-      kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
-      exit 0
-      ;;
-    Failed)
-      echo "Rollout Failed."
-      kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
-      kubectl argo rollouts --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" 2>/dev/null | head -40 || true
-      exit 1
-      ;;
-    Degraded)
-      # Argo đôi khi giữ phase=Degraded + RolloutAborted dù stable đủ pod (canary RS scale về 0).
-      # Không so ready với spec.replicas: env có thể 7 nhưng cluster đang 5 → mismatch vĩnh viễn.
-      cur=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.status.replicas}' 2>/dev/null || true)
-      ready=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
-      upd=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.status.updatedReplicas}' 2>/dev/null || true)
-      desired=$(kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
-      cur=${cur:-}; ready=${ready:-}; upd=${upd:-}; desired=${desired:-}
-      [ -z "$upd" ] && upd=0
-      ok=0
-      if [ -n "$cur" ] && [ "$cur" != "0" ] && [ "$ready" = "$cur" ] && [ "$upd" = "0" ]; then
-        ok=1
-      elif [ -n "$desired" ] && [ "$ready" = "$desired" ] && [ "$upd" = "0" ]; then
-        ok=1
-      fi
-      if [ "$ok" = "1" ]; then
-        echo "INFO: phase=Degraded nhưng fleet ổn định (status.replicas=${cur} ready=${ready}, spec.replicas=${desired}, updatedReplicas=${upd}) — coi như promote xong."
-        kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
-        exit 0
-      fi
-      degraded_streak=$((degraded_streak + 1))
-      if [ "$degraded_streak" -ge 36 ]; then
-        echo "Rollout Degraded liên tục ~3 phút (36 lần poll), dừng."
-        kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
-        kubectl argo rollouts --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" 2>/dev/null | head -40 || true
-        exit 1
-      fi
-      echo "WARN: phase=Degraded (lần $degraded_streak/36, có thể tạm sau promote), tiếp tục chờ..."
-      ;;
-    "")
-      degraded_streak=0
-      ;;
-    *)
-      degraded_streak=0
-      now=$(date +%s)
-      if [ $((now - last_log)) -ge 30 ]; then
-        echo "... vẫn chờ (phase=$ph)"
-        kubectl argo rollouts --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" 2>/dev/null | head -25 || true
-        last_log=$now
-      fi
-      ;;
-  esac
-  sleep 5
-done
-echo "Timeout: chưa thấy rollout Healthy sau ${WRC_DEADLINE_SEC}s (phase cuối: ${ph:-unknown})"
-kubectl --context "${WRC_CTX}" -n "${WRC_NS}" get rollout "${WRC_SVC}" -o wide || true
-exit 1
-'''
   }
 }

@@ -15,7 +15,7 @@ best_pat=-1
 
 consider_tag() {
   local t="$1"
-  if [[ "$t" =~ ^${prefix}([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  if [[ "$t" =~ ^${prefix}([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-f0-9]+)?$ ]]; then
     local maj="${BASH_REMATCH[1]}" min="${BASH_REMATCH[2]}" pat="${BASH_REMATCH[3]}"
     if (( maj > best_maj )) ||
       { (( maj == best_maj )) && (( min > best_min )); } ||

@@ -17,7 +17,8 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 
 current_tag="$(bash "${script_dir}/read-env-tag.sh" "$env_file" "$service")"
 
-if [[ ! "$current_tag" =~ ^(.*-v)([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+# Tag từ yaml có thể CÓ SHA (lần build trước Jenkins ghi vào) hoặc KHÔNG.
+if [[ ! "$current_tag" =~ ^(.*-v)([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-f0-9]+)?$ ]]; then
   echo "Cannot parse semver tag: $current_tag" >&2
   exit 1
 fi
@@ -32,10 +33,11 @@ else
   echo "[WARN] Không lấy được tag từ Hub cho prefix '${prefix}' — bump từ yaml: ${current_tag}" >&2
 fi
 
-if [[ ! "$base_tag" =~ ^(.*-v)([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+if [[ ! "$base_tag" =~ ^(.*-v)([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-f0-9]+)?$ ]]; then
   echo "Cannot parse base tag: $base_tag" >&2
   exit 1
 fi
+# new_tag: semver only — SHA sẽ do Jenkinsfile ghép vào sau khi build thành công
 new_tag="${BASH_REMATCH[1]}${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.$((${BASH_REMATCH[4]} + 1))"
 
 if [[ "$compute_only" != true ]]; then

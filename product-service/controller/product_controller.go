@@ -21,6 +21,14 @@ func NewProductController(db *sql.DB) *ProductController {
 	return &ProductController{DB: db}
 }
 
+const (
+	queryInsertProduct     = "INSERT INTO products (name, description, price) VALUES ($1, $2, $3) RETURNING id"
+	querySelectAllProducts = "SELECT id, name, description, price, category, image_url, stock_quantity, created_at, updated_at FROM products"
+	querySelectProductByID = "SELECT id, name, description, price, category, image_url, stock_quantity, created_at, updated_at FROM products WHERE id = $1"
+	queryUpdateProduct     = "UPDATE products SET name = $1, description = $2, price = $3 WHERE id = $4"
+	queryDeleteProduct     = "DELETE FROM products WHERE id = $1"
+)
+
 // CreateProduct handles creation of a new product
 func (pc *ProductController) CreateProduct(c *gin.Context) {
 	var product model.Product
@@ -31,7 +39,7 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 
 	var id int
 	err := pc.DB.QueryRow(
-		"INSERT INTO products (name, description, price) VALUES ($1, $2, $3) RETURNING id",
+		queryInsertProduct,
 		product.Name, product.Description, product.Price).Scan(&id)
 
 	if err != nil {
@@ -45,7 +53,7 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 
 // GetProducts returns all products
 func (pc *ProductController) GetProducts(c *gin.Context) {
-	rows, err := pc.DB.Query("SELECT id, name, description, price, category, image_url, stock_quantity, created_at, updated_at FROM products")
+	rows, err := pc.DB.Query(querySelectAllProducts)
 	if err != nil {
 		// Log and return empty list so the service stays responsive while DB recovers
 		log.Printf("Failed to query products: %v", err)
@@ -73,7 +81,7 @@ func (pc *ProductController) GetProduct(c *gin.Context) {
 	id := c.Param("id")
 	var product model.Product
 
-	err := pc.DB.QueryRow("SELECT id, name, description, price, category, image_url, stock_quantity, created_at, updated_at FROM products WHERE id = $1", id).
+	err := pc.DB.QueryRow(querySelectProductByID, id).
 		Scan(&product.ID, &product.Name, &product.Description, &product.Price, &product.Category, &product.ImageURL, &product.StockQuantity, &product.CreatedAt, &product.UpdatedAt)
 
 	if err == sql.ErrNoRows {
@@ -102,7 +110,7 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 		return
 	}
 
-	result, err := pc.DB.Exec("UPDATE products SET name = $1, description = $2, price = $3 WHERE id = $4",
+	result, err := pc.DB.Exec(queryUpdateProduct,
 		product.Name, product.Description, product.Price, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -123,7 +131,7 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 func (pc *ProductController) DeleteProduct(c *gin.Context) {
 	id := c.Param("id")
 
-	result, err := pc.DB.Exec("DELETE FROM products WHERE id = $1", id)
+	result, err := pc.DB.Exec(queryDeleteProduct, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
