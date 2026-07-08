@@ -1,9 +1,10 @@
 # Kind cluster: management - runs Argo CD
-# API server exposed on host port 33443.
-# After create: kubectl config set-cluster kind-management --server=https://127.0.0.1:33443
+# API server bound to 127.0.0.1:33443 (avoid kubeconfig https://0.0.0.0 which breaks TLS).
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 33443
   # Disable default CNI so we can install Cilium explicitly.
   disableDefaultCNI: true
   podSubnet: 10.200.0.0/16
@@ -17,7 +18,3 @@ containerdConfigPatches:
 nodes:
   - role: control-plane
     image: kindest/node:v1.28.0
-    extraPortMappings:
-      - containerPort: 6443
-        hostPort: 33443
-        protocol: TCP

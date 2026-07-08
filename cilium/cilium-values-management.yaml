@@ -50,10 +50,6 @@ clustermesh:
         ips:
           - 172.18.255.11
         port: 2379
-      - name: staging
-        ips:
-          - 172.18.255.21
-        port: 2379
       - name: prod
         ips:
           - 172.18.255.31

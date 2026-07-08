@@ -8,3 +8,6 @@ scripts/jenkins-ci.env
 *.tfstate
 *.tfstate.*
 terraform_secret/terraform.tfvars
+terraform/terraform.tfvars
+*.pem
+minhtri.pem
