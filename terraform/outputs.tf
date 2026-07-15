@@ -1,3 +1,8 @@
+output "ssh_ingress_cidr" {
+  description = "CIDR allowed for SSH and lab ports (auto-detected when ssh_ingress_cidr is null)."
+  value       = local.ssh_ingress_cidr
+}
+
 output "instance_public_ip" {
   description = "Public IP of the EC2 instance."
   value       = aws_instance.this.public_ip

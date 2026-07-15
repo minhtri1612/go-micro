@@ -7,7 +7,7 @@ This stack creates the smallest AWS base infrastructure for the `go-micro` Kind 
 - 1 Internet Gateway
 - 1 route table for Internet access
 - 1 security group
-- 1 Ubuntu EC2 instance (`m7i.2xlarge` by default)
+- 1 Ubuntu EC2 instance (`m7i.xlarge` by default — 16 GiB RAM; đủ cho 3 Kind cluster lab, lúc chạy ~10 GiB used)
 
 It is intentionally simple. It does **not** create EKS, NAT, private subnets, ALB, or EBS CSI.
 
@@ -39,13 +39,15 @@ This stack uses an **existing** EC2 key pair in the region (created in AWS conso
 
 ## What gets opened
 
-From your current public IP only:
+From your current public IP only (auto-detected at `terraform apply` unless you set `ssh_ingress_cidr`):
 
 - `22` for SSH
 - `18080` for Argo CD port-forward on the host
 - `18081` for Jenkins port-forward on the host
 
-Edit `allowed_tcp_ports` or `ssh_ingress_cidr` if needed.
+Edit `allowed_tcp_ports` or set `ssh_ingress_cidr` to pin a fixed CIDR if needed.
+
+When you change WiFi/location, run `terraform apply` again — it will refresh the security group with your new IP.
 
 ## Run
 
@@ -53,7 +55,6 @@ Edit `allowed_tcp_ports` or `ssh_ingress_cidr` if needed.
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
 # set ssh_key_name to the exact existing AWS key pair name
-# set ssh_ingress_cidr to your current public IP/32
 terraform init
 terraform plan
 terraform apply -auto-approve

@@ -94,6 +94,9 @@ kubectl --context kind-management -n argocd rollout status deploy/argocd-repo-se
 kubectl --context kind-management -n argocd rollout status statefulset/argocd-application-controller --timeout=180s
 
 kubectl -n argocd port-forward svc/argocd-server 18080:443
+
+kubectl -n argocd port-forward --address 0.0.0.0 svc/argocd-server 18080:443
+
 ```
 
 Terminal khác:

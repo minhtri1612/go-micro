@@ -76,7 +76,7 @@ resource "aws_security_group" "ec2" {
       from_port   = ingress.value
       to_port     = ingress.value
       protocol    = "tcp"
-      cidr_blocks = [var.ssh_ingress_cidr]
+      cidr_blocks = [local.ssh_ingress_cidr]
     }
   }
 

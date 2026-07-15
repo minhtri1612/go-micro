@@ -13,7 +13,7 @@ variable "project_name" {
 variable "instance_type" {
   description = "EC2 instance type."
   type        = string
-  default     = "m7i.2xlarge"
+  default     = "m7i.xlarge"
 }
 
 variable "ssh_key_name" {
@@ -23,8 +23,9 @@ variable "ssh_key_name" {
 }
 
 variable "ssh_ingress_cidr" {
-  description = "CIDR allowed to access the instance."
+  description = "CIDR allowed to access the instance. Leave null to auto-detect your public IP at apply time."
   type        = string
+  default     = null
 }
 
 variable "allowed_tcp_ports" {

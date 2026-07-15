@@ -1,10 +1,10 @@
 aws_region         = "ap-southeast-2"
 project_name       = "go-micro"
-instance_type      = "m7i.2xlarge"
+instance_type      = "m7i.xlarge"
 ssh_key_name       = "minhtri"
 
-# Detected current public IP at setup time. Update if your IP changes.
-ssh_ingress_cidr   = "192.177.153.220/32"
+# Omit ssh_ingress_cidr to auto-detect your public IP on each apply.
+# Or pin a fixed CIDR, e.g. ssh_ingress_cidr = "203.0.113.10/32"
 
 vpc_cidr           = "10.50.0.0/16"
 public_subnet_cidr = "10.50.1.0/24"
